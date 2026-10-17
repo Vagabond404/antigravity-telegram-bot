@@ -37,6 +37,8 @@ ExecStart=$PYTHON_BIN $BOT_DIR/bot.py
 Restart=always
 RestartSec=5s
 Environment="PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="HOME=/root"
+Environment="SSH_CONNECTION=1"
 EnvironmentFile=-$BOT_DIR/.env
 Environment=PYTHONUNBUFFERED=1
 LimitNOFILE=65536

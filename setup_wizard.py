@@ -108,17 +108,38 @@ def install_or_update_agy() -> str:
     return agy_bin
 
 
+def _is_agy_onboarded() -> bool:
+    """Check whether Antigravity CLI has completed Google login & onboarding."""
+    candidates = [
+        Path.home() / ".gemini" / "antigravity-cli" / "cache" / "onboarding.json",
+        Path.home() / ".gemini" / "antigravity" / "cache" / "onboarding.json",
+    ]
+    for p in candidates:
+        if p.is_file():
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                if data.get("onboardingComplete") or data.get("consumerOnboardingComplete") or data.get("enterpriseOnboardingComplete"):
+                    return True
+            except Exception:
+                pass
+    return False
+
+
 def check_agy_auth(agy_bin: str) -> list:
-    """Verify that Antigravity CLI can list models and is authenticated."""
+    """Verify that Antigravity CLI is truly authenticated with Google and list models."""
     print(f"\n{BOLD}[2/5] Connexion & Authentification Antigravity CLI...{RESET}")
     models = []
     if not (shutil.which(agy_bin) or Path(agy_bin).exists()):
         print(f"  {YELLOW}⚠ Antigravity CLI introuvable, étape d'authentification ignorée.{RESET}")
         return models
 
+    agy_env = {**os.environ, "HOME": os.environ.get("HOME") or str(Path.home())}
+    if not IS_WINDOWS:
+        agy_env.setdefault("SSH_CONNECTION", "1")
+
     def _try_list_models():
         try:
-            res = subprocess.run([agy_bin, "models"], capture_output=True, text=True, timeout=20)
+            res = subprocess.run([agy_bin, "models"], capture_output=True, text=True, timeout=20, env=agy_env)
             out = (res.stdout or "").strip()
             parsed = []
             for line in out.splitlines():
@@ -129,30 +150,38 @@ def check_agy_auth(agy_bin: str) -> list:
         except Exception as exc:
             return [], str(exc)
 
-    models, raw_out = _try_list_models()
-    if models:
-        print(f"  {GREEN}✔ Authentifié à Antigravity CLI ({len(models)} modèles disponibles) !{RESET}")
+    models, _ = _try_list_models()
+    onboarded = _is_agy_onboarded()
+
+    if onboarded and models:
+        print(f"  {GREEN}✔ Session Google Antigravity CLI active ({len(models)} modèles disponibles) !{RESET}")
         for mid, mname in models[:6]:
             print(f"    • {mname} ({mid})")
-        return models
+        reauth = input("  Souhaitez-vous reconnecter un autre compte Google ? [o/N] : ").strip().lower()
+        if reauth not in ("o", "oui", "y", "yes"):
+            return models
 
-    print(f"  {YELLOW}⚠ Antigravity CLI nécessite une connexion à votre compte Google.{RESET}")
+    print(f"  {YELLOW}⚠ Connexion de votre compte Google à Antigravity CLI requise.{RESET}")
     print(f"  Nous allons lancer `{agy_bin}` en mode interactif pour afficher le lien de connexion Google.")
-    print(f"  {CYAN}Instructions :{RESET}")
-    print(f"    1. Ouvrez l'URL Google affichée dans votre navigateur et connectez-vous.")
-    print(f"    2. Dès que l'interface Antigravity CLI est connectée, tapez {BOLD}/exit{RESET} (ou {BOLD}Ctrl+C{RESET}) pour revenir ici !\n")
-    ans = input("  Appuyez sur [Entrée] pour lancer la connexion Antigravity CLI (ou 's' pour passer) : ").strip().lower()
+    print(f"  {CYAN}Instructions (notamment sur serveur SSH) :{RESET}")
+    print("    1. Ouvrez l'URL Google affichée dans votre navigateur et connectez-vous.")
+    print(
+        "    2. Si le navigateur redirige vers une page `http://localhost:...` inaccessible depuis votre PC,\n"
+        f"       {BOLD}copiez l'URL complète `http://localhost:...` de la barre d'adresse{RESET} et collez-la dans ce terminal."
+    )
+    print(f"    3. Dès que l'interface Antigravity CLI est connectée, appuyez sur {BOLD}Ctrl+C{RESET} (ou tapez {BOLD}/exit{RESET}) pour continuer l'installation !\n")
+    ans = input("  Appuyez sur [Entrée] pour lancer la connexion Google Antigravity CLI (ou 's' pour passer) : ").strip().lower()
     if ans != "s":
         try:
-            # Launch interactive `agy` without unsupported flags so Google OAuth flow works natively
-            subprocess.run([agy_bin])
+            # Launch interactive `agy` with SSH_CONNECTION=1 on Linux so token is stored in file-based storage
+            subprocess.run([agy_bin], env=agy_env)
         except KeyboardInterrupt:
             pass
         except Exception as e:
             print(f"  {YELLOW}Note : {e}{RESET}")
         models, _ = _try_list_models()
-        if models:
-            print(f"\n  {GREEN}✔ Connexion Antigravity CLI confirmée ({len(models)} modèles disponibles) !{RESET}")
+        if _is_agy_onboarded():
+            print(f"\n  {GREEN}✔ Connexion Google Antigravity CLI confirmée ({len(models)} modèles disponibles) !{RESET}")
         else:
             print(f"\n  {YELLOW}ℹ Vous pourrez vous connecter à tout moment en tapant : {BOLD}agy{RESET}")
 

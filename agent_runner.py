@@ -138,6 +138,21 @@ RÈGLES DE COMMUNICATION & D'EXÉCUTION :
     return prompt.strip()
 
 
+def _build_agy_env() -> Dict[str, str]:
+    """Build environment variables for `agy` subprocesses across CLI and systemd."""
+    env = {
+        **os.environ,
+        "TERM": "dumb",
+        "NO_COLOR": "1",
+        "PYTHONUNBUFFERED": "1",
+        "HOME": os.environ.get("HOME") or str(Path.home()),
+    }
+    if not IS_WINDOWS:
+        # Ensure `agy` under systemd uses the same file-based token store as interactive SSH sessions
+        env.setdefault("SSH_CONNECTION", "1")
+    return env
+
+
 async def run_agy_subcommand(args: List[str], timeout: float = 15.0) -> Tuple[int, str, str]:
     """Run an `agy` CLI subcommand asynchronously and return (returncode, stdout, stderr)."""
     bin_path = find_agy_binary()
@@ -151,7 +166,7 @@ async def run_agy_subcommand(args: List[str], timeout: float = 15.0) -> Tuple[in
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(BASE_DIR),
-            env={**os.environ, "TERM": "dumb", "NO_COLOR": "1"},
+            env=_build_agy_env(),
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         return (
@@ -472,6 +487,52 @@ class AgentRunner:
                     await asyncio.sleep(1.0)
                     continue
 
+                # If --model was rejected (e.g. account has different model list or is not authenticated yet),
+                # retry immediately without `--model` so `agy` uses the account's default model or reports auth status.
+                err_lower = response_text.lower()
+                if current_model and (
+                    "invalid model selection" in err_lower
+                    or "not recognized as a known model" in err_lower
+                ):
+                    logger.warning(
+                        f"Model '{current_model}' rejected by CLI ({response_text[:120]}). "
+                        "Retrying with CLI default model (no --model flag)..."
+                    )
+                    fallback_text, fb_ok, fb_quota = await self._execute_model_stream(
+                        bin_path=bin_path,
+                        prompt=enhanced_prompt,
+                        raw_user_prompt=prompt,
+                        model="",
+                        settings=settings,
+                        on_update=on_update,
+                        on_tool_call=on_tool_call,
+                        on_tool_result=on_tool_result,
+                    )
+                    if fb_ok:
+                        self.has_active_session = True
+                        return (fallback_text, True)
+                    response_text = fallback_text
+                    err_lower = response_text.lower()
+
+                if (
+                    "authentication required" in err_lower
+                    or "not authenticated" in err_lower
+                    or "no model configuration is available for this account" in err_lower
+                    or "not recognized as a known model" in err_lower
+                ):
+                    auth_help = (
+                        "🔐 <b>Authentification Google Antigravity CLI requise sur le serveur !</b>\n\n"
+                        "Le binaire <code>agy</code> n'est pas encore connecté à votre compte Google (ou aucun modèle n'est rattaché à la session).\n\n"
+                        "👉 <b>Comment vous connecter en 30 secondes (en SSH sur votre serveur) :</b>\n"
+                        "1️⃣ Tapez la commande : <code>agy</code>\n"
+                        "2️⃣ Ouvrez le lien Google affiché dans votre navigateur et connectez-vous.\n"
+                        "3️⃣ Si votre navigateur redirige vers une page <code>http://localhost:...</code> inaccessible, "
+                        "<b>copiez l'URL complète</b> depuis la barre d'adresse du navigateur et <b>collez-la dans le terminal SSH</b>.\n"
+                        "4️⃣ Une fois l'interface <code>agy</code> ouverte, quittez avec <code>Ctrl+C</code> puis tapez :\n"
+                        "<code>systemctl restart antigravity-bot</code>"
+                    )
+                    return (auth_help, False)
+
                 # Auto-recovery if --conversation / --continue failed due to corrupted/expired session
                 err_upper = response_text.upper()
                 if self.has_active_session and (
@@ -547,7 +608,7 @@ class AgentRunner:
         if agent_profile:
             cmd.extend(["--agent", agent_profile])
 
-        if model:
+        if model and model.lower() != "auto":
             cmd.extend(["--model", model])
 
         effort_flag = resolve_effort_flag(model, user_effort)
@@ -589,7 +650,7 @@ class AgentRunner:
         ])
 
         logger.info(
-            f"Executing agy stream (model={model}, effort={effort_flag or 'auto'}, "
+            f"Executing agy stream (model={model or 'default'}, effort={effort_flag or 'auto'}, "
             f"mode={mode}, timeout={'infinite' if is_infinite else f'{timeout}s'})"
         )
 
@@ -604,7 +665,7 @@ class AgentRunner:
             "stdout": asyncio.subprocess.PIPE,
             "stderr": asyncio.subprocess.PIPE,
             "cwd": str(ws_path),
-            "env": {**os.environ, "TERM": "dumb", "PYTHONUNBUFFERED": "1"},
+            "env": _build_agy_env(),
         }
         if IS_WINDOWS:
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
