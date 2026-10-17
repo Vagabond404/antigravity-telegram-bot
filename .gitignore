@@ -1,0 +1,33 @@
+# Secrets & Personal Configuration (NEVER COMMIT)
+.env
+users.json
+settings.json
+conversations.json
+pending_approvals.json
+incidents_history.json
+service_account.json
+*.pem
+*.key
+
+# Databases & Local Storage
+*.db
+*.sqlite
+*.sqlite3
+memory.db
+vault/
+tmp/
+
+# Python / Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# Archives & OS files
+.archive/
+.DS_Store
+Thumbs.db
+*.log

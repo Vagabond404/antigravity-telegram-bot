@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "scan_interval_seconds": 60,
+  "cooldown_minutes": 15,
+  "services": {
+    "antigravity-bot": {
+      "name": "Bot Telegram Magma",
+      "type": "systemd",
+      "target": "antigravity-bot",
+      "enabled": true,
+      "icon": "🤖"
+    }
+  }
+}

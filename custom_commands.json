@@ -1,0 +1,52 @@
+{
+  "goal": {
+    "description": "Exécuter une tâche autonome approfondie jusqu'à complétion",
+    "template": "[OBJECTIF AUTONOME / LONG-RUNNING GOAL]\nTu es en mode autonome approfondi. Accomplis cette tâche de manière exhaustive, méthodique et vérifie chaque étape jusqu'à complétion totale.\n\nDemande / Objectif :\n{prompt}",
+    "overrides": {
+      "mode": "auto-approve",
+      "effort": "high",
+      "timeout": 0
+    },
+    "created_by": "system"
+  },
+  "grill_me": {
+    "description": "Clarifier et concevoir un projet via un entretien pas-à-pas",
+    "template": "[MODE ENTRETIEN & CONCEPTION / GRILL-ME]\nL'utilisateur souhaite concevoir ou cadrer un projet. Pose des questions ciblées UNE PAR UNE, explore l'arborescence des choix techniques, propose tes recommandations et valide chaque décision avant d'écrire du code.\n\nSujet du projet :\n{prompt}",
+    "overrides": {
+      "mode": "accept-edits",
+      "effort": "medium"
+    },
+    "created_by": "system"
+  },
+  "plan": {
+    "description": "Générer un plan d'architecture et d'implémentation détaillé étape par étape",
+    "template": "[MODE PLANIFICATION ARCHITECTURALE / PLAN]\nAnalyse la demande ci-dessous et élabore un plan d'action structuré, complet et vérifiable avant toute modification majeure.\n\nSujet :\n{prompt}",
+    "overrides": {
+      "mode": "plan",
+      "effort": "high"
+    },
+    "created_by": "system"
+  },
+  "boost": {
+    "description": "Activer la réflexion maximale (max effort) et la vérification multi-perspectives",
+    "template": "[MODE BOOST / RÉFLEXION MAXIMALE & VÉRIFICATION RIGOUREUSE]\nMobilise une réflexion approfondie, examine le problème sous plusieurs angles, utilise des sous-agents de recherche si pertinent et vérifie rigoureusement chaque résultat.\n\nProblème / Mission :\n{prompt}",
+    "overrides": {
+      "mode": "auto-approve",
+      "effort": "max",
+      "multi_agent": true,
+      "timeout": 0
+    },
+    "created_by": "system"
+  },
+  "teamwork": {
+    "description": "Orchestrer une équipe de sous-agents autonomes en parallèle sur un projet",
+    "template": "[MODE MULTI-AGENTS / TEAMWORK ORCHESTRATION]\nPour accomplir cette mission complexe, décompose le travail et utilise tes outils de sous-agents (`invoke_subagent`, `define_subagent`, `manage_subagents`, `send_message`) afin de déléguer la recherche, l'implémentation et la vérification en parallèle, puis synthétise le résultat final.\n\nMission d'équipe :\n{prompt}",
+    "overrides": {
+      "mode": "auto-approve",
+      "effort": "high",
+      "multi_agent": true,
+      "timeout": 0
+    },
+    "created_by": "system"
+  }
+}
