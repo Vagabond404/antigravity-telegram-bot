@@ -12,17 +12,15 @@ import platform
 import subprocess
 from pathlib import Path
 
+import config
+from config import find_agy_binary, BASE_DIR, ENV_FILE, SETTINGS_FILE, IS_WINDOWS
+
 try:
     import requests
 except ImportError:
     requests = None
 
-BASE_DIR = Path(__file__).resolve().parent
-ENV_FILE = BASE_DIR / ".env"
-SETTINGS_FILE = BASE_DIR / "settings.json"
 USERS_FILE = BASE_DIR / "users.json"
-
-IS_WINDOWS = platform.system().lower() == "windows"
 
 # ANSI colors (enabled on modern Windows 10/11 & Unix)
 if IS_WINDOWS:
@@ -44,8 +42,27 @@ def banner():
 
 def find_agy() -> str:
     """Locate the Antigravity CLI binary on Windows, Linux, or macOS."""
-    from config import find_agy_binary
-    return find_agy_binary()
+    return find_agy_binary() or ("agy.exe" if IS_WINDOWS else "agy")
+
+
+def _ensure_unix_global_symlink(agy_bin: str) -> None:
+    """Ensure /usr/local/bin/agy points to agy_bin on Linux/macOS so 'agy' works in any shell."""
+    if IS_WINDOWS or not agy_bin:
+        return
+    p = Path(agy_bin)
+    if not p.is_file():
+        return
+    target = Path("/usr/local/bin/agy")
+    try:
+        if not target.exists() or target.resolve() != p.resolve():
+            if os.access("/usr/local/bin", os.W_OK):
+                if target.exists() or target.is_symlink():
+                    target.unlink()
+                target.symlink_to(p)
+            else:
+                subprocess.run(["sudo", "ln", "-sf", str(p), str(target)], capture_output=True, timeout=5)
+    except Exception:
+        pass
 
 
 def install_or_update_agy() -> str:
@@ -55,6 +72,7 @@ def install_or_update_agy() -> str:
     exists = shutil.which(agy_bin) or Path(agy_bin).exists()
 
     if exists:
+        _ensure_unix_global_symlink(agy_bin)
         try:
             res = subprocess.run([agy_bin, "--version"], capture_output=True, text=True, timeout=10)
             ver = (res.stdout or res.stderr).strip()
@@ -82,6 +100,7 @@ def install_or_update_agy() -> str:
 
     agy_bin = find_agy()
     if shutil.which(agy_bin) or Path(agy_bin).exists():
+        _ensure_unix_global_symlink(agy_bin)
         print(f"  {GREEN}✔ Antigravity CLI installé avec succès : {agy_bin}{RESET}")
     else:
         print(f"  {YELLOW}⚠ Binaire `agy` non trouvé dans le PATH standard. Assurez-vous qu'il est installé.{RESET}")
@@ -116,20 +135,25 @@ def check_agy_auth(agy_bin: str) -> list:
             print(f"    • {mname} ({mid})")
         return models
 
-    print(f"  {YELLOW}⚠ Antigravity CLI nécessite une connexion ou une authentification.{RESET}")
-    print(f"  Nous allons lancer `{agy_bin}` pour vous permettre de vous connecter.")
-    print(f"  {CYAN}Astuce :{RESET} Une fois connecté dans l'interface Antigravity CLI, tapez `/exit` ou `Ctrl+C` pour revenir à cet assistant.\n")
+    print(f"  {YELLOW}⚠ Antigravity CLI nécessite une connexion à votre compte Google.{RESET}")
+    print(f"  Nous allons lancer `{agy_bin}` en mode interactif pour afficher le lien de connexion Google.")
+    print(f"  {CYAN}Instructions :{RESET}")
+    print(f"    1. Ouvrez l'URL Google affichée dans votre navigateur et connectez-vous.")
+    print(f"    2. Dès que l'interface Antigravity CLI est connectée, tapez {BOLD}/exit{RESET} (ou {BOLD}Ctrl+C{RESET}) pour revenir ici !\n")
     ans = input("  Appuyez sur [Entrée] pour lancer la connexion Antigravity CLI (ou 's' pour passer) : ").strip().lower()
     if ans != "s":
         try:
-            subprocess.run([agy_bin, "-p", "Say OK if connected", "--max-turns", "1"])
+            # Launch interactive `agy` without unsupported flags so Google OAuth flow works natively
+            subprocess.run([agy_bin])
         except KeyboardInterrupt:
             pass
         except Exception as e:
             print(f"  {YELLOW}Note : {e}{RESET}")
         models, _ = _try_list_models()
         if models:
-            print(f"  {GREEN}✔ Connexion Antigravity CLI confirmée ({len(models)} modèles disponibles) !{RESET}")
+            print(f"\n  {GREEN}✔ Connexion Antigravity CLI confirmée ({len(models)} modèles disponibles) !{RESET}")
+        else:
+            print(f"\n  {YELLOW}ℹ Vous pourrez vous connecter à tout moment en tapant : {BOLD}agy{RESET}")
 
     return models
 
@@ -140,13 +164,14 @@ def validate_telegram_token(token: str) -> dict | None:
         return None
     if not requests:
         return {"username": "bot", "first_name": "Telegram Bot"}
-    try:
-        r = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=10)
-        data = r.json()
-        if data.get("ok"):
-            return data.get("result", {})
-    except Exception:
-        pass
+    for attempt in range(3):
+        try:
+            r = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=10)
+            data = r.json()
+            if data.get("ok"):
+                return data.get("result", {})
+        except Exception:
+            time.sleep(1)
     return None
 
 
@@ -155,11 +180,10 @@ def poll_admin_from_telegram(token: str, bot_username: str) -> tuple[int | None,
     if not requests:
         return None, None
     print(f"\n  📲 Ouvrez Telegram et envoyez {BOLD}/start{RESET} à {CYAN}@{bot_username}{RESET} maintenant !")
-    print("  ⏳ En attente de votre message sur Telegram (60s max, Ctrl+C pour entrer l'ID manuellement)...")
+    print("  ⏳ En attente de votre message sur Telegram (60s max, Ctrl+C pour passer)...")
     offset = None
     try:
-        # Flush old updates first
-        r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates", params={"timeout": 1}, timeout=5).json()
+        r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates", params={"timeout": 1}, timeout=6).json()
         if r.get("ok") and r.get("result"):
             offset = r["result"][-1]["update_id"] + 1
     except Exception:
@@ -168,37 +192,39 @@ def poll_admin_from_telegram(token: str, bot_username: str) -> tuple[int | None,
     deadline = time.time() + 60
     try:
         while time.time() < deadline:
-            params = {"timeout": 5}
-            if offset is not None:
-                params["offset"] = offset
-            r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates", params=params, timeout=10).json()
-            if r.get("ok"):
-                for upd in r.get("result", []):
-                    offset = upd["update_id"] + 1
-                    msg = upd.get("message") or upd.get("edited_message")
-                    if msg and "from" in msg:
-                        user = msg["from"]
-                        uid = user.get("id")
-                        uname = user.get("username") or user.get("first_name") or "Admin"
-                        # Send confirmation message
-                        try:
-                            requests.post(
-                                f"https://api.telegram.org/bot{token}/sendMessage",
-                                json={
-                                    "chat_id": uid,
-                                    "text": f"✅ *Connexion Administrateur Réussie !*\n\nBonjour *{uname}* (`{uid}`), votre bot Antigravity v4.0 est maintenant lié à votre compte.",
-                                    "parse_mode": "Markdown",
-                                },
-                                timeout=5,
-                            )
-                        except Exception:
-                            pass
-                        return uid, uname
+            try:
+                params = {"timeout": 5}
+                if offset is not None:
+                    params["offset"] = offset
+                r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates", params=params, timeout=10).json()
+                if r.get("ok"):
+                    for upd in r.get("result", []):
+                        offset = upd["update_id"] + 1
+                        msg = upd.get("message") or upd.get("edited_message")
+                        if msg and "from" in msg:
+                            user = msg["from"]
+                            uid = user.get("id")
+                            uname = user.get("username") or user.get("first_name") or "Admin"
+                            try:
+                                requests.post(
+                                    f"https://api.telegram.org/bot{token}/sendMessage",
+                                    json={
+                                        "chat_id": uid,
+                                        "text": f"✅ *Connexion Administrateur Réussie !*\n\nBonjour *{uname}* (`{uid}`), votre bot Antigravity v4.0 est maintenant lié à votre compte.",
+                                        "parse_mode": "Markdown",
+                                    },
+                                    timeout=6,
+                                )
+                            except Exception:
+                                pass
+                            return uid, uname
+            except KeyboardInterrupt:
+                raise
+            except Exception:
+                time.sleep(2)
             time.sleep(1)
     except KeyboardInterrupt:
         print("\n  ⏹ Détection automatique interrompue.")
-    except Exception as e:
-        print(f"\n  {YELLOW}⚠ Erreur lors de la détection automatique : {e}{RESET}")
     return None, None
 
 

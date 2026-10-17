@@ -7,6 +7,7 @@ Zero hardcoded personal data — 100% public-repository safe.
 import os
 import sys
 import json
+import socket
 import shutil
 import logging
 import tempfile
@@ -19,6 +20,20 @@ logger = logging.getLogger("config")
 IS_WINDOWS = (os.name == "nt")
 IS_MACOS = (sys.platform == "darwin")
 IS_LINUX = not IS_WINDOWS and not IS_MACOS
+
+# Prioritize IPv4 (AF_INET) over IPv6 (AF_INET6) to prevent [Errno 101] Network is unreachable
+# on Linux/Armbian boxes where IPv6 AAAA records exist (e.g. api.telegram.org) but IPv6 routing is absent.
+_orig_getaddrinfo = socket.getaddrinfo
+
+
+def _ipv4_preferred_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    res = _orig_getaddrinfo(host, port, family, type, proto, flags)
+    ipv4 = [r for r in res if r[0] == socket.AF_INET]
+    ipv6 = [r for r in res if r[0] != socket.AF_INET]
+    return ipv4 + ipv6 if ipv4 else res
+
+
+socket.getaddrinfo = _ipv4_preferred_getaddrinfo
 
 # Base directory: defaults to current script directory, or BOT_BASE_DIR if specified
 _script_dir = Path(__file__).resolve().parent

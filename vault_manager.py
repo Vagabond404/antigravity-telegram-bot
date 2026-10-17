@@ -158,19 +158,22 @@ def search_notes(query: str) -> List[Dict[str, Any]]:
 
 def seed_vault_structure():
     vault = get_vault_path()
+    for folder in ("00_System", "00_Profil", "01_Projets", "02_Journal/Daily"):
+        (vault / folder).mkdir(parents=True, exist_ok=True)
+
     p_welcome = vault / "00_System" / "Architecture_Agent.md"
     if not p_welcome.exists():
         write_note(
             "00_System/Architecture_Agent.md",
             """# 🤖 Antigravity Telegram Agent - Second Brain Vault
 
-Ce coffre Markdown (Obsidian) stocke les notes, les projets et le journal quotidien de votre agent Antigravity.
+Ce coffre Markdown (Obsidian) stocke les notes, le profil utilisateur, les fiches de chaque projet (`01_Projets/`) et le journal quotidien (`02_Journal/Daily/`) de votre agent Antigravity.
 
 ## 🛠️ Composants Clés
 1. **Passerelle Telegram (`bot.py`)** : Suivi en temps réel, gestion multimédia (images, vidéos, audio, documents) et centre de contrôle complet (`/settings`).
 2. **Moteur Antigravity CLI (`agent_runner.py`)** : Compatible avec toutes les fonctionnalités d'Antigravity CLI (modèles dynamiques, sous-agents multi-agents, MCP, plugins, remote-control).
-3. **Mémoire Vectorielle (`memory_manager.py`)** : Recherche sémantique locale rapide via FastEmbed.
-4. **Coffre Markdown (`vault_manager.py`)** : Fiches de connaissances structurées et journal quotidien.
+3. **Mémoire Vectorielle (`memory_manager.py`)** : Recherche sémantique locale rapide via FastEmbed (`profile`, `preferences`, `projet`, `infra`, `rules`).
+4. **Coffre Markdown (`vault_manager.py`)** : Fiches de connaissances structurées par projet et journal quotidien.
 
 #antigravity #agent #vault #knowledge
 """,

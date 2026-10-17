@@ -29,7 +29,7 @@ from config import (
     find_agy_binary,
     record_conversation,
 )
-from memory_manager import get_relevant_context
+from memory_manager import get_relevant_context, auto_extract_and_store_facts
 
 logger = logging.getLogger("agent_runner")
 
@@ -111,14 +111,19 @@ RÈGLES DE COMMUNICATION & D'EXÉCUTION :
    Dès que tu génères, télécharges ou prépares un fichier pour l'utilisateur (image, graphique, PDF, vidéo, audio, archive, code), envoie-le directement sur Telegram avec la commande :
    `"{py_exe}" "{tg_send_script}" --file "<chemin_absolu_du_fichier>" --caption "Description"`
    - Pour forcer un type précis : `--photo`, `--video`, `--audio`, `--voice`, ou `--document`.
-3. 🧠 DEUXIÈME CERVEAU & MÉMOIRE LONG-TERME (Mem0) :
-   - Mémoriser une préférence ou information importante : `"{py_exe}" "{mem_script}" add "<information>" --category <profile|rules|projet|infra|tools>`
-   - Rechercher dans la mémoire : `"{py_exe}" "{mem_script}" search "<requête>"`
-4. 📚 COFFRE DE CONNAISSANCES MARKDOWN (`{VAULT_DIR}`) :
-   - Lister : `"{py_exe}" "{vault_script}" list`
-   - Lire : `"{py_exe}" "{vault_script}" read "<note>"`
-   - Écrire : `"{py_exe}" "{vault_script}" write "<chemin.md>" "<contenu>"`
-   - Journal du jour : `"{py_exe}" "{vault_script}" daily "<texte>"`
+3. 🧠 MÉMOIRE LONG-TERME PROACTIVE & DEUXIÈME CERVEAU (INTER-CONVERSATIONS) :
+   Tu DOIS conserver la mémoire entre toutes les discussions (même après `/clear` ou redémarrage) :
+   - Dès que l'utilisateur partage une **info personnelle** (prénom, métier, appareils, serveurs, OS), une **préférence** (langage, style, habitudes) ou une **règle**, enregistre-la PROACTIVEMENT sans attendre qu'on te le demande :
+     `"{py_exe}" "{mem_script}" add "<fait précis>" --category <profile|preferences|rules|infra> --key "<identifiant_court>" --importance 5`
+   - Dès que tu travailles sur un **projet** (nouveau projet, architecture, chemin du dossier, stack, avancement, décisions techniques), enregistre/mets à jour sa mémoire :
+     `"{py_exe}" "{mem_script}" add "<Nom du projet : dossier, stack, état actuel>" --category projet --key "projet_<nom>" --importance 5`
+   - Pour rechercher dans toute ta mémoire : `"{py_exe}" "{mem_script}" search "<requête>"`
+4. 📚 COFFRE DE CONNAISSANCES MARKDOWN OBSIDIAN (`{VAULT_DIR}`) :
+   - Pour chaque projet important ou documentation structurée, crée ou mets à jour une fiche dédiée dans `01_Projets/<Nom_Projet>.md` :
+     `"{py_exe}" "{vault_script}" write "01_Projets/<Nom_Projet>.md" "<contenu markdown détaillé>"`
+   - Lister les fiches : `"{py_exe}" "{vault_script}" list`
+   - Lire une fiche : `"{py_exe}" "{vault_script}" read "<note>"`
+   - Journal quotidien : `"{py_exe}" "{vault_script}" daily "<résumé action>"`
 5. 🌐 RECHERCHE, NAVIGATION & CAPTURE WEB :
    - Tu peux utiliser tes outils natifs (`search_web`, `read_url_content`, `generate_image`) ou l'outil navigateur :
      `"{py_exe}" "{browser_script}" search "<requête>"`
@@ -401,6 +406,11 @@ class AgentRunner:
             candidate_models = [preferred_model] + [m for m in model_ids if m != preferred_model]
         else:
             candidate_models = [preferred_model] + [m for m in model_ids if m != preferred_model]
+
+        try:
+            auto_extract_and_store_facts(prompt)
+        except Exception as e:
+            logger.debug(f"Auto memory extraction skipped: {e}")
 
         memory_ctx = get_relevant_context(prompt)
         system_prompt = build_system_prompt(settings)
