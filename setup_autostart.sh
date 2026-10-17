@@ -1,14 +1,14 @@
 #!/bin/bash
-# setup_autostart.sh - Configuration automatique du redémarrage au boot (Systemd)
+# setup_autostart.sh - Configure automatic systemd startup at boot on Linux
 
 set -e
 
 echo "=========================================================="
-echo "⚡ Configuration Auto-Start Antigravity Telegram Agent"
+echo "⚡ Antigravity Telegram Agent — Systemd Auto-Start Setup"
 echo "=========================================================="
 
 if [ "$EUID" -ne 0 ]; then
-  echo "❌ Ce script doit être exécuté en root (sudo bash setup_autostart.sh)"
+  echo "❌ Please run this script as root (sudo bash setup_autostart.sh)"
   exit 1
 fi
 
@@ -25,7 +25,7 @@ chmod +x "$BOT_DIR"/*.py 2>/dev/null || true
 
 cat <<EOF > /etc/systemd/system/antigravity-bot.service
 [Unit]
-Description=Antigravity Telegram Agent v4.0
+Description=Antigravity Telegram Agent v4.1
 After=network.target network-online.target
 Wants=network-online.target
 
@@ -50,5 +50,5 @@ EOF
 systemctl daemon-reload
 systemctl enable antigravity-bot.service
 systemctl restart antigravity-bot.service
-echo "✅ Service antigravity-bot.service installé, activé au boot et démarré."
+echo "✅ Service antigravity-bot.service installed, enabled at boot, and started."
 systemctl --no-pager status antigravity-bot.service || true

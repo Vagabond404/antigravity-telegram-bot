@@ -3,5 +3,5 @@
   "min_agy_version": "1.3.0",
   "repository": "https://github.com/Vagabond404/antigravity-telegram-bot.git",
   "branch": "main",
-  "changelog": "Système complet d'Auto-Update GitHub & Antigravity CLI depuis Telegram, Skill par défaut telegram-bot-mastery et Catalogue MCP en 1 clic."
+  "changelog": "Full GitHub & Antigravity CLI auto-update system with detached hot-restart, built-in telegram-bot-mastery AI skill, one-click MCP server catalog, and cross-chat vector memory."
 }

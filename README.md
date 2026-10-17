@@ -1,152 +1,190 @@
-# 🚀 Antigravity Telegram Agent v4.0
+# 🚀 Antigravity Telegram Agent v4.1
 
-**Pont universel, multi-agent et multimédia entre Telegram et Google Antigravity CLI (`agy`) — Compatible Windows, Linux & macOS.**
+**The Universal, Multi-Agent, Multimedia & Self-Updating Telegram Gateway for Google Antigravity CLI (`agy`) — Cross-Platform for Linux (Ubuntu, Debian, Armbian, Oracle Cloud), macOS & Windows.**
 
-Contrôlez intégralement **Antigravity CLI** (modèles dynamiques, niveaux de réflexion, sous-agents parallèles, serveurs MCP, plugins, sessions persistantes, Remote Control, mémoire vectorielle et multimédia bidirectionnel) directement depuis une interface **Telegram interactive ultra-intuitive**.
-
----
-
-## ✨ Fonctionnalités Principales
-
-### 🧠 100% Adapté à la dernière version d'Antigravity CLI (`agy`)
-- **Modèles Dynamiques (`agy models`)** : Récupération en temps réel des modèles disponibles sur votre compte Antigravity (`Gemini 4 Argon`, `Gemini 3.8 Flash`, `Claude Opus 5.5`, `Claude Sonnet 5.5`, `GPT-OSS 120B`, etc.) et changement en un clic depuis Telegram.
-- **Niveaux de Raisonnement (`--effort`)** : `auto`, `low`, `medium`, `high`, `xhigh`, `max`.
-- **Modes d'Exécution (`--permission-mode`)** :
-  - 🚀 `auto-approve` (`--dangerously-skip-permissions`) — Autonomie complète.
-  - ✏️ `accept-edits` — Édition automatique des fichiers, confirmation pour les commandes critiques.
-  - 📋 `plan` — Planification et lecture seule avant action.
-- **Mode Sandbox (`--sandbox`)** : Isolation sécurisée de l'exécution des commandes terminal.
-- **Orchestration Multi-Agents & Sous-Agents** :
-  - Support natif des outils `invoke_subagent`, `define_subagent`, `manage_subagents`, `send_message` et du profil `--agent` (`default`, `research`, `self`, ou profil personnalisé).
-  - Suivi en temps réel dans Telegram des sous-agents lancés en parallèle.
-- **Continuité des Sessions (`--conversation` / `--continue`)** :
-  - Basculez entre vos conversations passées, reprenez une session précise ou démarrez une session vierge via `/sessions`.
-- **Gestionnaire MCP (`agy mcp`) & Plugins (`agy plugin`)** :
-  - Listez, ajoutez ou supprimez des serveurs MCP et des plugins Antigravity directement depuis Telegram (`/mcp`, `/plugins`).
-- **Remote Control (`agy remote-control`) & Auto-Update (`agy update`)** :
-  - Activez le démon de contrôle distant Antigravity ou mettez à jour le binaire `agy` depuis Telegram (`/remote`, `/update_cli`).
-
-### 🎛️ Centre de Contrôle Telegram Ultra-Intuitif
-Gérez **absolument tous les paramètres** sans jamais toucher à un fichier de configuration grâce au tableau de bord interactif `/settings` :
-- `/settings` — Tableau de bord complet (2 pages interactives)
-- `/models` — Sélecteur dynamique de modèle IA
-- `/effort` — Sélecteur de profondeur de réflexion (`auto` à `max`)
-- `/mode` — Sélecteur du mode de permissions + Sandbox
-- `/agents` — Configuration Multi-Agents & profils de sous-agents
-- `/sessions` — Historique et reprise des sessions Antigravity
-- `/mcp` — Gestion des serveurs Model Context Protocol (MCP)
-- `/plugins` — Gestion des plugins Antigravity CLI
-- `/remote` — Démarrage/Arrêt du serveur `agy remote-control`
-- `/workspace` — Changement du dossier de travail (`--add-dir` inclus)
-
-### 🖼️ Multimédia Bidirectionnel Complet
-- **Entrant (Utilisateur ➔ Agent)** : Envoyez du texte, des **photos**, des **vidéos**, des **messages vocaux**, des **fichiers audio** ou n'importe quel **document** (PDF, code, archive, etc.). Les fichiers sont téléchargés proprement et transmis au contexte de l'agent.
-- **Sortant (Agent ➔ Utilisateur)** : L'agent peut vous envoyer n'importe quel fichier généré ou demandé (**images**, **vidéos**, **audios**, **notes vocales**, **documents**) via l'outil intégré `tg_send.py` ou par détection automatique en fin de tour.
-
-### 🛡️ Stabilité Maximale & File d'Attente Intelligente
-- **Zéro Crash / Zéro Message Perdu** : Verrou d'exécution asynchrone (`turn_execution_lock`) qui met proprement en file d'attente les messages envoyés pendant que l'agent réfléchit, avec possibilité d'interrompre à tout moment via `/stop`.
-- **Protection des Prompts Longs** : Passage automatique par fichier temporaire pour les instructions volumineuses afin d'éviter toute limite de ligne de commande sous Windows et Linux.
+Control the entire **Google Antigravity CLI (`agy`)** ecosystem—dynamic AI models, reasoning effort levels, parallel subagents, MCP servers, CLI plugins, persistent sessions, cross-chat long-term vector memory, bidirectional multimedia, and autonomous self-updates—directly from an **interactive Telegram Control Center**.
 
 ---
 
-## ⚡ Installation en Une Seule Commande (Windows & Linux)
+## ✨ What You Can Do With Antigravity Telegram Agent
 
-L'installateur automatique s'occupe de **tout** :
-1. Vérifie/installe Python 3 et crée un environnement virtuel isolé (`.venv`).
-2. Installe toutes les dépendances Python requises.
-3. Télécharge et installe automatiquement la dernière version d'**Antigravity CLI (`agy`)**.
-4. Lance l'**Assistant Interactif (`setup_wizard.py`)** qui vous aide à :
-   - Connecter votre compte **Antigravity CLI**
-   - Renseigner et vérifier votre **`TELEGRAM_BOT_TOKEN`**
-   - Détecter automatiquement votre **ID Administrateur Telegram** (en envoyant simplement `/start` à votre bot)
-   - Activer le démarrage automatique en arrière-plan (`systemd` sur Linux / Tâche planifiée sur Windows).
+### 🧠 1. Full Native Integration with Google Antigravity CLI (`agy`)
+- **Live Dynamic Model Discovery (`agy models`)**: Automatically queries your authenticated Antigravity CLI to list all available models (`Gemini 4 Argon`, `Gemini 3.8 Flash`, `Claude Opus 5.5`, `Claude Sonnet 5.5`, `GPT-OSS 120B`, etc.) with automatic quota fallback if a model reaches its rate limit.
+- **Granular Reasoning Effort (`--effort`)**: Switch effortlessly between `auto`, `low`, `medium`, `high`, `xhigh`, and `max` thinking depths.
+- **Execution & Permission Modes**:
+  - ⚡ `auto-approve` (`--dangerously-skip-permissions`) — Full autonomous execution.
+  - ✏️ `accept-edits` (`--mode accept-edits`) — Auto-accept file edits while prompting for critical shell actions.
+  - 📋 `plan` (`--mode plan`) — Read-only architectural planning before execution.
+- **CLI Sandbox (`--sandbox`)**: Toggle isolated command execution with a single tap.
+- **Session Persistence (`--conversation` / `--continue`)**: Browse recent conversations, resume any past session by ID, or start a fresh session via `/sessions`.
+- **Remote Control (`agy remote-control`)**: Start, stop, or monitor the Antigravity Remote Control daemon from `/remote`.
+
+### 🤝 2. Multi-Agent & Subagent Orchestration
+- Native support for `invoke_subagent`, `define_subagent`, `manage_subagents`, and `send_message`.
+- Launch specialized subagents in parallel (`research`, `self`, or custom-defined subagents) via `/teamwork` or natural prompts.
+- Real-time Telegram streaming displays active tool calls, subagent spawns, and elapsed execution times inside an expandable live status message.
+
+### 🧠 3. Cross-Chat Long-Term Vector Memory (`memory_manager.py` & `mem.py`)
+- **Persistent Second Brain (`memory.db`)**: Powered by **FastEmbed (`BAAI/bge-small-en-v1.5`)** + **SQLite** with automatic keyword fallback.
+- **Structured Categories with Key-Based Upsert**:
+  - `profile` — Personal user details, identity, skills, and devices.
+  - `preferences` — Coding standards, preferred languages, frameworks, and communication style.
+  - `projet` — Per-project architecture, directory paths, tech stack, and progress across chats.
+  - `infra` — Servers, IP addresses, OS details, Docker containers, and network topology.
+  - `rules` — Permanent user rules enforced across every conversation.
+- **Always-On Context Injection & Auto-Capture**: Core profile, preferences, rules, and active projects are automatically injected into every turn (even after `/clear` or a reboot), and key facts stated in chat are captured automatically.
+
+### 🎓 4. Built-In AI Mastery Skill (`telegram-bot-mastery`)
+- Comes pre-packaged with the **`telegram-bot-mastery`** skill ([`.agents/skills/telegram-bot-mastery/SKILL.md`](.agents/skills/telegram-bot-mastery/SKILL.md)) and root [`AGENTS.md`](AGENTS.md) rules.
+- Automatically synced to `~/.gemini/config/skills/telegram-bot-mastery/SKILL.md` so the AI agent knows all its Telegram capabilities (sending files/media, managing long-term memory, capturing web screenshots, creating dynamic slash commands, and orchestrating subagents) regardless of the active workspace directory.
+
+### 🔌 5. Curated MCP Server Catalog (Installable at Setup or in 1 Click via `/mcp`)
+Install and toggle top **Model Context Protocol (MCP)** servers directly during setup (`setup_wizard.py`) or anytime from Telegram via `/mcp`:
+1. **Playwright MCP** (`@playwright/mcp@latest`) — Full headless browser automation, clicks, forms, and DOM snapshots.
+2. **Firecrawl MCP** (`firecrawl-mcp`) — Deep web scraping and clean Markdown extraction.
+3. **Docker MCP** (`@quantgeekdev/docker-mcp`) — Manage Docker containers, images, volumes, and logs from Telegram.
+4. **Context7 MCP** (`@upstash/context7-mcp`) — Inject up-to-date official documentation for any library or framework.
+5. **Sequential Thinking MCP** (`@modelcontextprotocol/server-sequential-thinking`) — Structured multi-step problem decomposition.
+6. **GitHub MCP** (`@modelcontextprotocol/server-github`) — Manage repositories, branches, Issues, and Pull Requests.
+
+### 🖼️ 6. Bidirectional Multimedia & Automatic File Delivery
+- **Incoming (User ➔ Agent)**: Send text, **photos**, **videos**, **voice notes**, **audio files**, or **documents/archives** (PDF, ZIP, source code). All media is downloaded into `tmp/` and passed into the agent's context.
+- **Outgoing (Agent ➔ User)**: Any file generated or referenced by the agent (images, charts, videos, audio, voice notes, PDFs, ZIPs) is delivered directly to your Telegram chat via `tg_send.py` or automatic end-of-turn detection.
+
+### 🔄 7. Zero-Data-Loss Autonomous Self-Updater (`updater.py` & `VERSION.json`)
+- **Background GitHub Watcher**: Periodically checks `origin/main` on GitHub. When a new commit is pushed, the bot sends an interactive Telegram notification displaying the new version, changelog, commit list, and CLI compatibility status.
+- **1-Click Telegram Approval**: Tap **`✅ Oui, mettre à jour maintenant`** (or run `/update` anytime) to trigger the automated update pipeline:
+  1. **Backs up 100% of user data** (`.env`, `memory.db`, `settings.json`, `users.json`, `conversations.json`, `custom_commands.json`, and skills) before touching any file.
+  2. **Downloads & applies latest GitHub code** and restores/merges all user data and custom commands.
+  3. **Updates Python dependencies** in `.venv`.
+  4. **Verifies Antigravity CLI (`agy`) version** against `min_agy_version` in [`VERSION.json`](VERSION.json) and automatically runs `agy update` (or the official installer) if a newer CLI version is required.
+  5. **Detached Hot-Restart**: Spawns an isolated background restarter process (`updater.py --restart-worker`) that cleanly restarts `antigravity-bot.service` (on Linux systemd) or relaunches `bot.py` and edits the Telegram message to confirm completion!
+
+---
+
+## ⚡ One-Command Installation
+
+The automated installer sets up everything from scratch:
+1. Checks/installs **Python 3**, **Node.js / `npx`** (for MCP servers), **FFmpeg**, and **SQLite**, and configures IPv4/DNS optimizations on Linux/Armbian.
+2. Downloads and links the latest **Google Antigravity CLI (`agy`)** globally (`/usr/local/bin/agy` on Linux, `%LOCALAPPDATA%\agy\bin` on Windows).
+3. Creates an isolated Python virtual environment (`.venv`) and installs all dependencies.
+4. Launches the **Interactive Setup Wizard (`setup_wizard.py`)** to:
+   - Authenticate your Google account with `agy`
+   - Validate your `TELEGRAM_BOT_TOKEN`
+   - Auto-detect your Telegram Admin User ID when you send `/start`
+   - Install the default `telegram-bot-mastery` skill and your choice of recommended **MCP Servers** (Playwright, Firecrawl, Docker, Context7, Sequential Thinking, GitHub)
+   - Optionally register a **24/7 background service** (`systemd` on Linux / Scheduled Task on Windows).
 
 ### 🐧 Linux & macOS (Ubuntu, Debian, Armbian, Oracle Cloud, Fedora, Arch)
-
-Depuis un terminal, clonez le dépôt et lancez `install.sh` :
 
 ```bash
 git clone https://github.com/Vagabond404/antigravity-telegram-bot.git antigravity-telegram-bot && cd antigravity-telegram-bot && bash install.sh
 ```
 
-*(Ou si vous êtes déjà dans le dossier du projet :)*
-```bash
-bash install.sh
-```
-
-### 🪟 Windows (Windows 10, Windows 11, Windows Server)
-
-Ouvrez **PowerShell** et exécutez :
+### 🪟 Windows (Windows 10, Windows 11, Windows Server — PowerShell)
 
 ```powershell
 git clone https://github.com/Vagabond404/antigravity-telegram-bot.git antigravity-telegram-bot; cd antigravity-telegram-bot; powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-*(Ou si vous êtes déjà dans le dossier du projet :)*
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
+---
 
-Vous pouvez ensuite lancer le bot à tout moment en double-cliquant sur **`start_bot.bat`** (Windows) ou via **`./start_bot.sh`** (Linux/macOS).
+## 🔄 Updating Your Server Without Losing Any Configuration
+
+All personal configuration and memory files (`.env`, `users.json`, `settings.json`, `memory.db`, `conversations.json`) are excluded from Git via [`.gitignore`](.gitignore) and backed up automatically by [`updater.py`](updater.py).
+
+- **From Telegram (v4.1+)**:
+  Simply tap **`✅ Oui, mettre à jour maintenant`** when the bot notifies you of a new GitHub push, or type `/update` in your Telegram chat.
+- **From Terminal (Linux / Armbian — e.g. when upgrading from an older version before v4.1)**:
+  ```bash
+  cd ~/antigravity-telegram-bot && git pull origin main && sudo apt-get install -y nodejs npm && ln -sf "$HOME/.local/bin/agy" /usr/local/bin/agy && (systemctl restart antigravity-bot 2>/dev/null || ./start_bot.sh)
+  ```
 
 ---
 
-## 🧭 Commandes Telegram Disponibles
+## 🧭 Complete Telegram Commands Reference
 
-| Commande | Description |
+| Command | Description |
 | :--- | :--- |
-| `/start` | Accueil, statut en direct et réclamation automatique du rôle Admin au 1er lancement |
-| `/settings` | 🎛️ **Centre de Contrôle complet** (Modèles, Effort, Mode, Agents, MCP, Plugins, etc.) |
-| `/models` | 🧠 Changer de modèle IA en direct (`agy models`) |
-| `/effort` | ⚡ Ajuster l'effort de raisonnement (`auto`, `low`, `medium`, `high`, `xhigh`, `max`) |
-| `/mode` | 🛡️ Changer le mode d'approbation (`auto-approve`, `accept-edits`, `plan`) et Sandbox |
-| `/agents` | 🤝 Configurer l'orchestration Multi-Agents et le profil `--agent` |
-| `/sessions` | 💬 Gérer l'historique des conversations et reprendre une session (`--conversation`) |
-| `/mcp` | 🔌 Lister, ajouter ou supprimer des serveurs MCP (`agy mcp`) |
-| `/plugins` | 🧩 Gérer les plugins Antigravity CLI (`agy plugin`) |
-| `/remote` | 🌐 Démarrer ou arrêter une session `agy remote-control` |
-| `/workspace` | 📂 Changer le répertoire de travail principal ou ajouter des dossiers (`--add-dir`) |
-| `/new` | 🔄 Démarrer une nouvelle conversation vierge |
-| `/stop` | 🛑 Interrompre immédiatement l'exécution en cours |
-| `/goal <objectif>` | 🎯 Lancer une mission autonome approfondie jusqu'à complétion |
-| `/plan <sujet>` | 📐 Générer un plan d'architecture détaillé avant exécution |
-| `/grill_me <idée>` | 🎤 Entretien interactif pas-à-pas pour cadrer un projet |
-| `/boost <tâche>` | 🚀 Activer le raisonnement maximal et la vérification rigoureuse |
-| `/teamwork <projet>` | 👥 Mobiliser des sous-agents spécialisés en parallèle |
-| `/memory` | 🧠 Explorer la mémoire long-terme vectorielle Mem0 (Profil, Préférences, Projets) |
-| `/remember <texte>` | 📌 Mémoriser une information permanente dans Mem0 |
-| `/forget <id>` | 🗑️ Supprimer un souvenir de la mémoire long-terme |
-| `/update` | 🔄 Vérifier et installer en 1 clic les mises à jour GitHub & Antigravity CLI (sans perte de données) |
-| `/status` | 📊 Tableau de bord télémétrique du système hôte (CPU, RAM, Disque, Réseau) |
-| `/users` | 👥 Gérer les utilisateurs et permissions (Administrateurs / Invités) |
+| `/start` | Welcome dashboard, live status, and automatic Admin claim on first run |
+| `/settings` | 🎛️ **Interactive Control Center** (Models, Effort, Mode, Multi-Agent, MCP, Plugins, Update, etc.) |
+| `/models` | 🧠 Switch AI model in real time (`agy models`) |
+| `/effort` | 💡 Set reasoning effort level (`auto`, `low`, `medium`, `high`, `xhigh`, `max`) |
+| `/mode` | 🛡️ Switch execution mode (`auto-approve`, `accept-edits`, `plan`) & Sandbox |
+| `/agents` | 🤝 Toggle Multi-Agent orchestration and select `--agent` profile |
+| `/mcp` | 🔌 Manage MCP servers & install **Playwright, Firecrawl, Docker, Context7** in 1 click |
+| `/plugins` | 🧩 Manage and import Antigravity CLI plugins (`agy plugin`) |
+| `/remote` | 🌐 Start, stop, or inspect `agy remote-control` daemon |
+| `/sessions` | 💬 Browse conversation history and resume any previous session (`--conversation`) |
+| `/workspace` | 📂 Change primary workspace directory or add secondary directories (`--add-dir`) |
+| `/update` | 🔄 Check GitHub & Antigravity CLI for updates and install in 1 click with hot-restart |
+| `/update_cli` | ⬆️ Force a self-update of the Antigravity CLI binary (`agy update`) |
+| `/memory` | 🧠 View or search your cross-chat Long-Term Vector Memory (`Mem0`) |
+| `/remember <fact>` | 📌 Save a permanent fact to Long-Term Memory |
+| `/forget <id>` | 🗑️ Delete a memory entry by ID |
+| `/commands` | 🕹️ List, create (`/commands add`), or delete (`/commands remove`) custom Telegram commands |
+| `/goal <objective>` | 🎯 Run a deep, autonomous long-running workflow until 100% completion |
+| `/teamwork <task>` | 👥 Spawn a coordinated team of specialized subagents in parallel |
+| `/boost <problem>` | 🚀 Activate maximum reasoning (`max`) and rigorous multi-angle verification |
+| `/plan <topic>` | 📐 Generate a comprehensive architectural plan before writing code |
+| `/grill_me <idea>` | 🎤 Interactive step-by-step design interview to refine requirements |
+| `/status` | 📊 Host telemetry, CLI binary status, active session ID, and token usage |
+| `/services` | 🩺 Check system health (CPU, RAM, Disk, Uptime) and service status |
+| `/autoheal` | 🤖 Configure autonomous log scanning & AI self-healing for Docker and systemd |
+| `/users` | 👥 Role-Based Access Control (Approve/Block users, manage permissions) |
+| `/clear` | 🧹 Reset the active conversation session (long-term memory is preserved) |
+| `/abort` | 🛑 Immediately stop the currently running agent turn |
+| `/help` | 📚 Complete interactive command guide |
 
 ---
 
-## 📤 Envoi de Fichiers par l'Agent (`tg_send.py`)
+## 🛠️ Built-In Agent CLI Utilities
 
-L'agent dispose d'un utilitaire CLI dédié lui permettant de vous envoyer proactivement n'importe quel média pendant ou à la fin de sa réflexion :
+The AI agent can invoke these local CLI tools autonomously during any task:
 
+### 1. `tg_send.py` — Proactive Telegram Media Delivery
 ```bash
-# Envoyer un message texte formaté HTML
-python tg_send.py "<b>Opération terminée !</b>"
+# Auto-detect file type (Photo, Video, Audio, Voice, GIF, Document)
+python tg_send.py --file "./output/chart.png" --caption "Generated performance chart"
 
-# Envoyer une image / capture d'écran
-python tg_send.py --photo "./capture.png" --caption "Voici l'aperçu généré"
-
-# Envoyer une vidéo, un audio, une note vocale ou un document
-python tg_send.py --video "./demo.mp4" --caption "Vidéo de démonstration"
-python tg_send.py --audio "./musique.mp3"
+# Explicit media type flags
+python tg_send.py --photo "./preview.jpg" --caption "UI screenshot"
+python tg_send.py --video "./demo.mp4" --caption "Recorded demo"
+python tg_send.py --audio "./track.mp3"
 python tg_send.py --voice "./note.ogg"
-python tg_send.py --document "./rapport.pdf"
+python tg_send.py --document "./report.pdf"
+```
 
-# Détection automatique du type de média selon l'extension
-python tg_send.py --file "./resultat.png" --caption "Envoyé automatiquement"
+### 2. `mem.py` — Cross-Chat Long-Term Memory CLI
+```bash
+# Upsert a memory by category and unique key
+python mem.py add "Main server runs Armbian Linux at 192.168.110.200" --category infra --key "armbian_server" --importance 5
+python mem.py add "Project Alpha: /root/alpha, FastAPI + React" --category projet --key "projet_alpha" --importance 5
+
+# Search or list memories
+python mem.py search "Project Alpha"
+python mem.py list --category projet
+python mem.py delete 3
+```
+
+### 3. `browser_tool.py` — Headless Web Search, Markdown Extraction & Screenshots
+```bash
+python browser_tool.py search "Google Antigravity CLI documentation"
+python browser_tool.py fetch "https://example.com"
+python browser_tool.py screenshot "https://example.com" --send-tg --caption "Live webpage screenshot"
+```
+
+### 4. `command_manager.py` — Dynamic Telegram Command Creator
+```bash
+python command_manager.py add deploy "Deploy current project" "Run deployment pipeline and verify health for: {prompt}" --mode auto-approve --effort high
+python command_manager.py list
+python command_manager.py remove deploy
 ```
 
 ---
 
-## 🔒 Sécurité & Confidentialité (Dépôt Public)
+## 🔒 Security & Privacy (Public-Repository Safe)
 
-- **Aucune donnée personnelle dans le code** : Tous les identifiants, tokens et préférences locales sont stockés exclusivement dans `.env`, `users.json` et `settings.json`, qui sont ignorés par Git via `.gitignore`.
-- **Premier Administrateur Automatique (Auto-Claim)** : Si aucun `ALLOWED_USER_ID` n'est défini dans `.env`, le tout premier utilisateur qui envoie `/start` au bot devient automatiquement l'Administrateur principal et verrouille l'accès.
-- **Contrôle d'Accès par Rôles (RBAC)** : Les utilisateurs inconnus sont bloqués par défaut et peuvent demander un accès invité validé par l'administrateur via des boutons Telegram interactifs (`✅ Accepter` / `🚫 Bloquer`).
+- **Zero Hardcoded Secrets**: All tokens, user IDs, memories, and runtime settings are stored in `.env`, `users.json`, `settings.json`, and `memory.db`, which are strictly ignored by Git via [`.gitignore`](.gitignore).
+- **First-Admin Auto-Claim**: If `ALLOWED_USER_ID` is left empty in `.env`, the very first user who sends `/start` to the bot is automatically registered as the Primary Administrator and locks access.
+- **Role-Based Access Control (RBAC)**: Unknown users are blocked by default and can request access via an inline button, sending an instant approval/rejection prompt (`✅ Approve` / `🚫 Block`) to the Administrator on Telegram.

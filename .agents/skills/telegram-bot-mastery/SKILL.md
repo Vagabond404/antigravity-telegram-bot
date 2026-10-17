@@ -1,129 +1,129 @@
 ---
 name: telegram-bot-mastery
 description: >-
-  Complete operational guide and capability reference for the Antigravity Telegram Agent v4.0.
+  Complete operational guide and capability reference for the Antigravity Telegram Agent v4.1.
   Use this skill whenever operating through Telegram, sending files/photos/videos/audio to the user,
   storing or retrieving long-term cross-chat memories (personal info, preferences, projects, infra),
   capturing web screenshots, creating dynamic Telegram slash commands, managing MCP servers/plugins,
   or orchestrating multi-agent subagents.
 ---
 
-# Antigravity Telegram Agent v4.0 — Guide de Maîtrise Complet
+# Antigravity Telegram Agent v4.1 — Complete Mastery Guide
 
-Tu es propulsé par **Google Antigravity CLI (`agy`)** et connecté en temps réel à **Telegram** via la passerelle **Antigravity Telegram Agent v4.0**. Ce skill décrit l'ensemble de tes capacités natives et comment les utiliser à la perfection.
+You are powered by **Google Antigravity CLI (`agy`)** and connected in real time to **Telegram** through the **Antigravity Telegram Agent v4.1** gateway. This skill documents all your built-in capabilities and how to use them effectively.
 
 ---
 
-## 1. 📤 Envoi Multimédia Bidirectionnel sur Telegram (`tg_send.py`)
+## 1. 📤 Bidirectional Multimedia & File Delivery on Telegram (`tg_send.py`)
 
-Tu peux envoyer **n'importe quel fichier** (image, graphique, capture d'écran, vidéo, audio, note vocale, PDF, archive ZIP, script) directement dans la conversation Telegram de l'utilisateur.
+You can send **any file** (image, chart, screenshot, video, audio, voice note, PDF, ZIP archive, or source file) directly into the user's Telegram chat.
 
-### Commandes d'envoi direct
-Utilise l'exécutable Python de l'environnement virtuel (ou `python`) avec `tg_send.py` :
+### Direct Delivery Commands
+Use the Python interpreter with `tg_send.py`:
 
 ```bash
-# Détection automatique du format (Photo, Vidéo, Audio, Voix, Animation ou Document)
-python tg_send.py --file "/chemin/absolu/fichier.ext" --caption "Description claire"
+# Auto-detect media format (Photo, Video, Audio, Voice, Animation, or Document)
+python tg_send.py --file "/absolute/path/to/file.ext" --caption "Clear description"
 
-# Forcer un type de média spécifique :
-python tg_send.py --photo "/chemin/absolu/image.png" --caption "Voici l'image générée"
-python tg_send.py --video "/chemin/absolu/video.mp4" --caption "Aperçu vidéo"
-python tg_send.py --audio "/chemin/absolu/audio.mp3" --caption "Fichier audio"
-python tg_send.py --voice "/chemin/absolu/vocal.ogg" --caption "Note vocale"
-python tg_send.py --document "/chemin/absolu/archive.zip" --caption "Archive du projet"
+# Force a specific media type:
+python tg_send.py --photo "/absolute/path/to/image.png" --caption "Generated image"
+python tg_send.py --video "/absolute/path/to/video.mp4" --caption "Video preview"
+python tg_send.py --audio "/absolute/path/to/audio.mp3" --caption "Audio file"
+python tg_send.py --voice "/absolute/path/to/voice.ogg" --caption "Voice note"
+python tg_send.py --document "/absolute/path/to/archive.zip" --caption "Project archive"
 ```
 
-### Règles importantes pour `tg_send.py`
-- **N'utilise JAMAIS `tg_send.py` pour envoyer de simples messages texte de progression** ("Je cherche...", "Analyse en cours...") : l'interface Telegram affiche déjà tes pensées, tes outils et tes sous-agents en temps réel dans une bulle animée.
-- En revanche, utilise **toujours** `tg_send.py --file ...` dès que tu produis un livrable visuel ou téléchargeable (image, PDF, capture d'écran, build, export).
+### Important Rules for `tg_send.py`
+- **NEVER use `tg_send.py` to send intermediate text status messages** (e.g., "Searching...", "Step 1..."): the Telegram bot already streams your live thoughts, tool calls, and subagents in real time in an animated message bubble.
+- **ALWAYS use `tg_send.py --file ...`** whenever you generate or prepare a visual or downloadable deliverable (image, PDF, screenshot, build artifact, export).
 
 ---
 
-## 2. 🧠 Mémoire Long-Terme Inter-Conversations (`mem.py` / `memory.db`)
+## 2. 🧠 Proactive Cross-Chat Long-Term Memory (`mem.py` / `memory.db`)
 
-Tu disposes d'un moteur de **Mémoire Long-Terme Hybride (Vectorielle FastEmbed + SQLite)** qui persiste entre toutes les sessions, même après `/clear` ou un redémarrage du serveur.
+You have a **Hybrid Long-Term Memory Engine (FastEmbed Vector Search + SQLite)** that persists across all conversations, even after `/clear` or a server reboot.
 
-### Catégories officielles
-- `profile` : Identité de l'utilisateur (prénom, métier, localisation, appareils, compétences).
-- `preferences` : Préférences de langage, style de code, frameworks favoris, ton des réponses.
-- `projet` : Détails de chaque projet (nom, chemin du dossier, stack technique, architecture, état d'avancement, prochaines étapes).
-- `infra` : Serveurs, adresses IP, OS (Armbian, Windows, VPS), conteneurs Docker, ports, services.
-- `rules` : Règles permanentes demandées par l'utilisateur.
+### Official Memory Categories
+- `profile`: User identity (name, role, location, devices, skills).
+- `preferences`: Coding style, preferred languages/frameworks, communication preferences.
+- `projet`: Project details (name, directory path, tech stack, architecture, current status, next steps).
+- `infra`: Servers, IP addresses, OS (Armbian, Windows, Linux VPS), Docker containers, ports, services.
+- `rules`: Permanent rules and constraints specified by the user.
 
-### Commandes de mémorisation proactive (`mem.py`)
-Enregistre **proactivement** toute information importante à l'aide d'une clé unique (`--key`) pour mettre à jour proprement le souvenir sans créer de doublon :
+### Proactive Memory Commands (`mem.py`)
+Proactively store any important fact using a unique key (`--key`) so existing entries are cleanly updated (upserted) without creating duplicates:
 
 ```bash
-# Enregistrer ou mettre à jour une info personnelle / préférence / règle / infra
-python mem.py add "L'utilisateur utilise un serveur Armbian Linux (192.168.110.200) et un PC Windows." --category infra --key "serveurs_utilisateur" --importance 5
+# Store or update personal info / preferences / rules / infrastructure
+python mem.py add "User operates an Armbian Linux server (192.168.110.200) and a Windows PC." --category infra --key "user_servers" --importance 5
 
-# Enregistrer ou mettre à jour l'état d'un projet
-python mem.py add "Projet MonApp : situé dans /root/mon-app, stack FastAPI + React, authentification terminée." --category projet --key "projet_monapp" --importance 5
+# Store or update project state
+python mem.py add "Project MyApp: located in /root/my-app, stack FastAPI + React, authentication completed." --category projet --key "projet_myapp" --importance 5
 
-# Rechercher dans la mémoire long-terme (hybride sémantique + mots-clés)
-python mem.py search "MonApp architecture"
+# Hybrid semantic + keyword search across long-term memory
+python mem.py search "MyApp architecture"
 
-# Lister tous les souvenirs actifs (ou filtrer par catégorie)
+# List all active memories (or filter by category)
 python mem.py list
 python mem.py list --category projet
 
-# Supprimer un souvenir obsolète par son ID
+# Delete an obsolete memory by ID
 python mem.py delete 12
 ```
 
 ---
 
-## 3. 🌐 Navigation Web, Scraping & Captures d'Écran (`browser_tool.py` & MCP)
+## 3. 🌐 Web Search, Scraping & Live Screenshots (`browser_tool.py` & MCP)
 
-Tu disposes de plusieurs niveaux d'outils pour interagir avec le Web :
+You have multiple tools to interact with the web:
 
-1. **Outils natifs Antigravity** : `search_web` et `read_url_content`.
-2. **Serveurs MCP Web (si activés)** :
-   - **Playwright MCP (`playwright`)** : Automatisation complète d'un navigateur headless (clics, formulaires, SPA JavaScript, captures DOM).
-   - **Firecrawl MCP (`firecrawl`)** : Scraping profond et transformation de sites complexes en Markdown structuré.
-3. **Utilitaire intégré `browser_tool.py`** :
+1. **Native Antigravity tools**: `search_web` and `read_url_content`.
+2. **Web MCP Servers (when enabled)**:
+   - **Playwright MCP (`playwright`)**: Full headless browser automation (clicks, forms, JS SPAs, DOM snapshots).
+   - **Firecrawl MCP (`firecrawl`)**: Deep web scraping and clean Markdown extraction.
+3. **Built-in `browser_tool.py` utility**:
    ```bash
-   # Recherche web rapide (DuckDuckGo)
-   python browser_tool.py search "documentation officielle FastAPI lifespan"
+   # Fast DuckDuckGo web search
+   python browser_tool.py search "FastAPI lifespan official documentation"
 
-   # Extraction propre d'une page web en Markdown
+   # Extract a webpage as clean Markdown
    python browser_tool.py fetch "https://example.com"
 
-   # Capture d'écran HD d'un site web et envoi direct sur Telegram
-   python browser_tool.py screenshot "https://example.com" --send-tg --caption "Aperçu du site en direct"
+   # Capture an HD webpage screenshot and send it directly to Telegram
+   python browser_tool.py screenshot "https://example.com" --send-tg --caption "Live website preview"
    ```
 
 ---
 
-## 4. 🕹️ Création de Commandes Telegram Dynamiques (`command_manager.py`)
+## 4. 🕹️ Dynamic Telegram Slash Commands (`command_manager.py`)
 
-Tu peux créer, lister ou supprimer des commandes `/slash` personnalisées sur Telegram à la demande de l'utilisateur. Elles sont immédiatement synchronisées avec le menu `/` de Telegram :
+You can create, list, or remove custom `/slash` commands on Telegram whenever requested by the user. They are automatically synchronized with Telegram's `/` command menu:
 
 ```bash
-# Créer une nouvelle commande /audit
-python command_manager.py add audit "Auditer la sécurité et la qualité d'un projet" "Réalise un audit complet de sécurité et de code sur : {prompt}" --mode auto-approve --effort high
+# Create a custom /audit command
+python command_manager.py add audit "Audit project security and code quality" "Perform a comprehensive security and code quality audit on: {prompt}" --mode auto-approve --effort high
 
-# Lister les commandes personnalisées
+# List custom commands
 python command_manager.py list
 
-# Supprimer une commande personnalisée
+# Remove a custom command
 python command_manager.py remove audit
 ```
 
 ---
 
-## 5. 🤝 Orchestration Multi-Agents & Sous-Agents (`invoke_subagent`)
+## 5. 🤝 Multi-Agent & Subagent Orchestration (`invoke_subagent`)
 
-Lorsque le mode Multi-Agents est actif :
-- Utilise `invoke_subagent` pour lancer des sous-agents en parallèle (`research` pour l'exploration rapide, `self` pour exécuter des sous-tâches complètes, ou crée un sous-agent dédié avec `define_subagent`).
-- L'interface Telegram affiche automatiquement en direct l'activité de tes sous-agents à l'utilisateur.
+When Multi-Agent mode is enabled:
+- Use `invoke_subagent` to spawn parallel subagents (`research` for fast codebase/web exploration, `self` for parallel implementation tasks, or custom subagents via `define_subagent`).
+- The Telegram interface automatically displays live subagent activity to the user.
 
 ---
 
-## 6. 🔌 Écosystème Antigravity CLI (`agy`) & Auto-Heal
+## 6. 🔌 Antigravity CLI Ecosystem (`agy`), Auto-Update & Self-Healing
 
-Tu peux inspecter ou gérer l'environnement Antigravity CLI à tout moment :
-- **Serveurs MCP** : `agy mcp list`, `agy mcp add <nom> -- <commande>`, `agy mcp enable <nom>`, `agy mcp disable <nom>`
-- **Plugins CLI** : `agy plugin list`, `agy plugin install <nom>`
-- **Modèles IA** : `agy models`
-- **Santé du serveur** : `python server_watchdog.py` (vérifie CPU, RAM, Disque et services actifs).
+You can inspect or manage the Antigravity CLI environment at any time:
+- **MCP Servers**: `agy mcp list`, `agy mcp add <name> -- <command>`, `agy mcp enable <name>`, `agy mcp disable <name>`
+- **CLI Plugins**: `agy plugin list`, `agy plugin install <name>`
+- **AI Models**: `agy models`
+- **System Health**: `python server_watchdog.py` (monitors CPU, RAM, Disk, and active services).

@@ -1,90 +1,89 @@
 #!/bin/bash
-# setup_oracle.sh - Déploiement automatisé de l'Agent Magma sur Oracle Cloud Free Tier
-# Compatible Ubuntu 22.04/24.04 LTS et Oracle Linux / Debian
+# setup_oracle.sh - Automated deployment of Antigravity Telegram Agent on Oracle Cloud / Linux VPS
+# Compatible with Ubuntu 22.04/24.04 LTS, Debian, Armbian, and Oracle Linux
 
 set -e
 
 echo "=========================================================="
-echo "⚡ Installation & Déploiement Agent IA Magma sur Oracle Cloud"
+echo "⚡ Antigravity Telegram Agent — Automated Linux Deployment"
 echo "=========================================================="
 
-# 1. Vérification des privilèges root / sudo
+# 1. Verify root / sudo privileges
 if [ "$EUID" -ne 0 ]; then
   if command -v sudo &>/dev/null; then
-    echo "🔑 Élévation des privilèges via sudo..."
+    echo "🔑 Elevating privileges via sudo..."
     exec sudo bash "$0" "$@"
   else
-    echo "❌ Ce script doit être exécuté en root ou avec sudo."
+    echo "❌ This script must be run as root or with sudo."
     exit 1
   fi
 fi
 
-# 2. Mise à jour et paquets système requis
+# 2. Install required system packages
 echo ""
-echo "📦 [1/6] Installation des paquets système..."
+echo "📦 [1/6] Installing required system packages..."
 if command -v apt-get &>/dev/null; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
-    apt-get install -y -qq python3 python3-pip python3-venv git curl wget ffmpeg jq ufw
+    apt-get install -y -qq python3 python3-pip python3-venv git curl wget ffmpeg jq ufw nodejs npm
 elif command -v dnf &>/dev/null; then
-    dnf install -y -q python3 python3-pip git curl wget ffmpeg jq
+    dnf install -y -q python3 python3-pip git curl wget ffmpeg jq nodejs npm
 fi
 
-# 3. Création de l'arborescence
+# 3. Create application directory structure
 echo ""
-echo "📁 [2/6] Préparation des répertoires applicatifs..."
+echo "📁 [2/6] Preparing application directories..."
 BOT_DIR="/opt/antigravity-bot"
 mkdir -p "$BOT_DIR" /root/.gemini
 
-# 4. Installation d'Antigravity CLI (agy)
+# 4. Install Google Antigravity CLI (agy)
 echo ""
-echo "🤖 [3/6] Installation de Google Antigravity CLI (agy)..."
+echo "🤖 [3/6] Installing Google Antigravity CLI (agy)..."
 if ! command -v agy &>/dev/null && [ ! -f "/usr/local/bin/agy" ]; then
-    echo "Téléchargement d'Antigravity CLI..."
+    echo "Downloading Antigravity CLI..."
     curl -fsSL https://antigravity.google/cli/install.sh | bash || true
-    
-    # Trouver l'exécutable agy installé
+
+    # Locate the installed agy binary and link it globally
     AGY_FOUND=$(find / -name "agy" -type f -executable 2>/dev/null | grep -E "bin/agy" | head -n 1 || true)
     if [ -n "$AGY_FOUND" ]; then
         ln -sf "$AGY_FOUND" /usr/local/bin/agy
         chmod +x /usr/local/bin/agy
-        echo "✅ Antigravity CLI lié avec succès à /usr/local/bin/agy"
+        echo "✅ Antigravity CLI linked to /usr/local/bin/agy"
     else
-        echo "⚠️ Antigravity CLI n'a pas pu être installé automatiquement via le script."
-        echo "   Vous pourrez exécuter : curl -fsSL https://antigravity.google/cli/install.sh | bash"
+        echo "⚠️ Antigravity CLI could not be linked automatically."
+        echo "   You can install it manually: curl -fsSL https://antigravity.google/cli/install.sh | bash"
     fi
 else
-    echo "✅ Antigravity CLI (agy) est déjà présent."
+    echo "✅ Antigravity CLI (agy) is already installed."
 fi
 
-# 5. Configuration de l'environnement virtuel Python
+# 5. Configure Python virtual environment
 echo ""
-echo "🐍 [4/6] Configuration de l'environnement virtuel Python..."
+echo "🐍 [4/6] Configuring Python virtual environment..."
 cd "$BOT_DIR"
 
-if [ ! -d "$BOT_DIR/venv" ]; then
-    python3 -m venv "$BOT_DIR/venv"
+if [ ! -d "$BOT_DIR/.venv" ]; then
+    python3 -m venv "$BOT_DIR/.venv"
 fi
 
-"$BOT_DIR/venv/bin/pip" install --upgrade pip -q
+"$BOT_DIR/.venv/bin/pip" install --upgrade pip -q
 
 if [ -f "$BOT_DIR/requirements.txt" ]; then
-    echo "Installation des dépendances Python (python-telegram-bot, httpx, etc.)..."
-    "$BOT_DIR/venv/bin/pip" install -r "$BOT_DIR/requirements.txt" -q
+    echo "Installing Python dependencies from requirements.txt..."
+    "$BOT_DIR/.venv/bin/pip" install -r "$BOT_DIR/requirements.txt" -q
 else
-    echo "Installation directe des dépendances principales..."
-    "$BOT_DIR/venv/bin/pip" install python-telegram-bot httpx python-dotenv requests psutil numpy fastembed -q
+    echo "Installing core Python dependencies..."
+    "$BOT_DIR/.venv/bin/pip" install python-telegram-bot httpx python-dotenv requests psutil numpy fastembed -q
 fi
 
-# Rendre exécutables tous les scripts Python
 chmod +x "$BOT_DIR"/*.py 2>/dev/null || true
 
-# 6. Service systemd
+# 6. Configure systemd service
 echo ""
-echo "⚙️ [5/6] Configuration du service systemd antigravity-bot..."
+echo "⚙️ [5/6] Configuring antigravity-bot systemd service..."
 cat <<EOF > /etc/systemd/system/antigravity-bot.service
 [Unit]
-Description=Antigravity Telegram Bot Interactive Bridge (Oracle Cloud)
+Description=Antigravity Telegram Agent v4.1
 After=network.target network-online.target
 Wants=network-online.target
 
@@ -92,11 +91,11 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=$BOT_DIR
-ExecStart=$BOT_DIR/venv/bin/python3 $BOT_DIR/bot.py
+ExecStart=$BOT_DIR/.venv/bin/python3 $BOT_DIR/bot.py
 Restart=always
 RestartSec=5s
 Environment="PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-EnvironmentFile=/opt/antigravity-bot/.env
+EnvironmentFile=-/opt/antigravity-bot/.env
 Environment=PYTHONUNBUFFERED=1
 LimitNOFILE=65536
 StandardOutput=journal
@@ -110,20 +109,19 @@ systemctl daemon-reload
 systemctl enable antigravity-bot.service
 systemctl restart antigravity-bot.service
 
-# 7. Vérification finale
+# 7. Final status check
 echo ""
-echo "📊 [6/6] Vérification du service antigravity-bot..."
+echo "📊 [6/6] Checking antigravity-bot service status..."
 sleep 2
 systemctl --no-pager status antigravity-bot.service || true
 
 echo ""
 echo "=========================================================="
-echo "🎉 Agent IA Magma déployé et activé avec succès !"
+echo "🎉 Antigravity Telegram Agent deployed and started!"
 echo "=========================================================="
-echo "ℹ️ Pour surveiller les logs en temps réel :"
+echo "ℹ️ To monitor live logs:"
 echo "   journalctl -u antigravity-bot.service -f"
 echo ""
-echo "ℹ️ Pour connecter votre compte Google à l'Antigravity CLI (première connexion) :"
-echo "   Lancez simplement : agy"
-echo "   Et ouvrez l'URL Google affichée pour autoriser l'agent avec votre compte Google habituel."
+echo "ℹ️ To authenticate your Google account with Antigravity CLI:"
+echo "   Run: agy"
 echo "=========================================================="

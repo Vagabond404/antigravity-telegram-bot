@@ -1,36 +1,32 @@
-﻿---
+---
 name: autonomous-browser
-description: Navigateur autonome et outils de recherche web propulsés par Chromium Headless sur Armbian. Utilisez ce skill pour chercher sur le web, extraire le contenu d'un site web, ou faire des captures d'écran (screenshots) et les envoyer sur Telegram.
+description: Headless browser automation, web search, DOM/Markdown extraction, and webpage screenshot tool with direct Telegram delivery.
 ---
 
 # Autonomous Web Browser & Search Skill
 
-Ce skill fournit un ensemble d'outils rapides et autonomes pour naviguer sur le web, exécuter des recherches d'informations en temps réel et capturer des aperçus visuels de pages web directement depuis le serveur Armbian Linux.
+This skill provides fast, cross-platform headless browser utilities to search the web, extract clean Markdown from webpages, and capture high-resolution screenshots delivered directly to the user's Telegram chat.
 
-## 🛠️ Commandes Disponibles
+## 🛠️ Available Commands
 
-### 1. 🔍 Recherche Web Instantanée
-Effectue une recherche web propre et structurée sans nécessiter de clé API :
+### 1. 🔍 Instant Web Search
+Run a clean web search without requiring an API key:
 ```bash
-browser search "<termes de recherche>" [--limit 5]
+python browser_tool.py search "<search query>"
 ```
 
-### 2. 📄 Extraction & Lecture de Page Web (DOM & Markdown)
-Extrait le contenu propre d'une page web au format Markdown :
+### 2. 📄 Webpage Extraction (DOM to Clean Markdown)
+Extract the readable content of any webpage as clean Markdown:
 ```bash
-browser fetch <url>
+python browser_tool.py fetch <url>
 ```
 
-### 3. 📸 Capture d'Écran Web (Screenshot) & Envoi Telegram
-Capture un rendu haute fidélité d'une page web au format PNG :
+### 3. 📸 Webpage Screenshot & Direct Telegram Delivery
+Capture a high-resolution PNG screenshot of a webpage and optionally send it straight to Telegram:
 ```bash
-# Capture simple
-browser screenshot <url> --out /tmp/capture.png
+# Save screenshot locally
+python browser_tool.py screenshot <url> --out ./tmp/capture.png
 
-# Capture ET envoi automatique direct dans le chat Telegram de l'utilisateur
-browser screenshot <url> --send-tg --caption "Aperçu de <titre/site>"
+# Capture AND send directly to the user's Telegram chat
+python browser_tool.py screenshot <url> --send-tg --caption "Live preview of <site>"
 ```
-
-## 💡 Bonnes Pratiques
-- Dès que l'utilisateur vous demande de visiter un site ou de vérifier une information en ligne, utilisez `browser search "..."` ou `browser fetch <url>`.
-- Si l'utilisateur vous demande à quoi ressemble un site ou une capture visuelle, exécutez `browser screenshot <url> --send-tg --caption "..."`.

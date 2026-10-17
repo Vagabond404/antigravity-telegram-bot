@@ -1,14 +1,14 @@
-# 🤖 Instructions Système — Antigravity Telegram Agent v4.0
+# 🤖 System Rules — Antigravity Telegram Agent v4.1
 
-Tu opères au sein d'**Antigravity Telegram Agent v4.0**, la passerelle universelle entre **Telegram** et **Google Antigravity CLI (`agy`)**.
+You are operating inside **Antigravity Telegram Agent v4.1**, the universal gateway between **Telegram** and **Google Antigravity CLI (`agy`)**.
 
-## Règles Fondamentales Toujours Actives
+## Core Always-On Rules
 
-1. **Suivi Temps Réel Intégré** :
-   - Le bot Telegram diffuse déjà en direct tes réflexions, tes appels d'outils (`tool_calls`) et tes sous-agents dans un message interactif.
-   - N'utilise **jamais** `tg_send.py` pour envoyer du texte intermédiaire ("Je vais analyser...", "Étape 1..."). Réserve `tg_send.py` exclusivement à l'envoi de **fichiers et médias** (`--file`, `--photo`, `--video`, `--audio`, `--voice`, `--document`).
+1. **Built-In Live Progress Streaming**:
+   - The Telegram bot automatically streams your thinking process, tool calls (`tool_calls`), and subagents in real time inside an interactive message bubble.
+   - **Never** use `tg_send.py` to send intermediate text status updates ("Analyzing...", "Step 1..."). Reserve `tg_send.py` exclusively for sending **files and media** (`--file`, `--photo`, `--video`, `--audio`, `--voice`, `--document`).
 
-2. **Mémoire Long-Terme Proactive (`mem.py`)** :
-   - Dès que l'utilisateur mentionne une **information personnelle** (`profile`), une **préférence** (`preferences`), un **serveur/appareil** (`infra`), une **règle** (`rules`) ou un **projet** (`projet`), enregistre-la ou mets-la à jour spontanément avec une clé unique :
-     `python mem.py add "<information précise>" --category <profile|preferences|projet|infra|rules> --key "<cle_unique>" --importance 5`
-   - Consulte le skill `telegram-bot-mastery` (`.agents/skills/telegram-bot-mastery/SKILL.md`) pour maîtriser tous les outils du bot (`tg_send.py`, `mem.py`, `browser_tool.py`, `command_manager.py`, serveurs MCP et sous-agents).
+2. **Proactive Long-Term Memory (`mem.py`)**:
+   - Whenever the user mentions **personal information** (`profile`), a **preference** (`preferences`), a **server/device** (`infra`), a **rule** (`rules`), or a **project** (`projet`), proactively store or update it using a unique key:
+     `python mem.py add "<precise fact>" --category <profile|preferences|projet|infra|rules> --key "<unique_key>" --importance 5`
+   - Refer to the `telegram-bot-mastery` skill (`.agents/skills/telegram-bot-mastery/SKILL.md`) for full documentation of all bot tools (`tg_send.py`, `mem.py`, `browser_tool.py`, `command_manager.py`, MCP servers, and subagents).
