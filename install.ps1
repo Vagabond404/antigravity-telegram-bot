@@ -10,7 +10,7 @@ Write-Host "==================================================================" 
 
 # If invoked via irm | iex outside the repo, clone or navigate to repo
 if (-not (Test-Path ".\bot.py")) {
-    $RepoUrl = if ($env:ANTIGRAVITY_BOT_REPO) { $env:ANTIGRAVITY_BOT_REPO } else { "https://github.com/antigravity-agent/antigravity-telegram-bot.git" }
+    $RepoUrl = if ($env:ANTIGRAVITY_BOT_REPO) { $env:ANTIGRAVITY_BOT_REPO } else { "https://github.com/Vagabond404/antigravity-telegram-bot.git" }
     $TargetDir = if ($env:ANTIGRAVITY_BOT_DIR) { $env:ANTIGRAVITY_BOT_DIR } else { Join-Path $HOME "antigravity-telegram-bot" }
     if (-not (Test-Path (Join-Path $TargetDir "bot.py"))) {
         Write-Host "⬇️ Clonage du dépôt dans $TargetDir..." -ForegroundColor Cyan

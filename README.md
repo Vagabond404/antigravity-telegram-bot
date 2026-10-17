@@ -66,7 +66,7 @@ L'installateur automatique s'occupe de **tout** :
 Depuis un terminal, clonez le dépôt et lancez `install.sh` :
 
 ```bash
-git clone https://github.com/VOTRE_UTILISATEUR/VOTRE_REPO.git antigravity-telegram-bot && cd antigravity-telegram-bot && bash install.sh
+git clone https://github.com/Vagabond404/antigravity-telegram-bot.git antigravity-telegram-bot && cd antigravity-telegram-bot && bash install.sh
 ```
 
 *(Ou si vous êtes déjà dans le dossier du projet :)*
@@ -79,7 +79,7 @@ bash install.sh
 Ouvrez **PowerShell** et exécutez :
 
 ```powershell
-git clone https://github.com/VOTRE_UTILISATEUR/VOTRE_REPO.git antigravity-telegram-bot; cd antigravity-telegram-bot; powershell -ExecutionPolicy Bypass -File .\install.ps1
+git clone https://github.com/Vagabond404/antigravity-telegram-bot.git antigravity-telegram-bot; cd antigravity-telegram-bot; powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 *(Ou si vous êtes déjà dans le dossier du projet :)*

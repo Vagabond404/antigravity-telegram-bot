@@ -18,7 +18,7 @@ echo -e "${CYAN}${BOLD}=========================================================
 
 # If invoked via curl | bash outside of repository, clone or use current directory
 if [ ! -f "bot.py" ]; then
-    REPO_URL="${ANTIGRAVITY_BOT_REPO:-https://github.com/antigravity-agent/antigravity-telegram-bot.git}"
+    REPO_URL="${ANTIGRAVITY_BOT_REPO:-https://github.com/Vagabond404/antigravity-telegram-bot.git}"
     TARGET_DIR="${ANTIGRAVITY_BOT_DIR:-$HOME/antigravity-telegram-bot}"
     echo -e "${YELLOW}📂 Fichier bot.py non détecté dans le dossier courant.${RESET}"
     if [ -d "$TARGET_DIR" ] && [ -f "$TARGET_DIR/bot.py" ]; then
