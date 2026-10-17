@@ -689,10 +689,31 @@ def get_mcp_keyboard(servers: List[Dict[str, str]]) -> InlineKeyboardMarkup:
         ])
 
     rows.append([
+        InlineKeyboardButton("⚡ Pack MCP Recommandés (Playwright, Firecrawl, Docker...)", callback_data="mcp_catalog")
+    ])
+    rows.append([
         InlineKeyboardButton("➕ Ajouter Serveur MCP", callback_data="mcp_add_prompt"),
         InlineKeyboardButton("🔄 Actualiser", callback_data="menu_mcp"),
     ])
     rows.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+    return InlineKeyboardMarkup(rows)
+
+
+def get_mcp_catalog_keyboard(installed_names: List[str]) -> InlineKeyboardMarkup:
+    import config
+    rows = []
+    for srv in config.RECOMMENDED_MCP_SERVERS:
+        sid = srv["id"]
+        is_inst = sid in installed_names
+        status_badge = "✅ Déjà installé" if is_inst else "➕ Installer en 1 clic"
+        rows.append([
+            InlineKeyboardButton(
+                f"🔌 {srv['title'].split('(')[0].strip()} — {status_badge}",
+                callback_data=f"mcp_quick_install:{sid}",
+            )
+        ])
+    rows.append([InlineKeyboardButton("🚀 Tout installer (Pack Recommandé)", callback_data="mcp_quick_install:all_default")])
+    rows.append([InlineKeyboardButton("⬅️ Retour aux Serveurs MCP", callback_data="menu_mcp")])
     return InlineKeyboardMarkup(rows)
 
 

@@ -102,6 +102,7 @@ def build_system_prompt(settings: dict) -> str:
     prompt = f"""[RÔLE & IDENTITÉ DE L'AGENT]
 Tu es {agent_name}, un assistant IA personnel autonome propulsé par Google Antigravity CLI et connecté en temps réel à Telegram.
 Système hôte : {'Windows' if IS_WINDOWS else 'Linux/Unix'} | Répertoire bot : `{BASE_DIR}`
+Skill intégré de maîtrise du bot : `telegram-bot-mastery` (`.agents/skills/telegram-bot-mastery/SKILL.md`).
 
 RÈGLES DE COMMUNICATION & D'EXÉCUTION :
 1. ⚡ SUIVI EN DIRECT INTÉGRÉ : Telegram affiche déjà en temps réel ta réflexion, tes outils, tes sous-agents et ton avancement via un message dynamique animé. N'exécute PAS `tg_send` pour dire "Je vais faire..." ou "Analyse en cours...".
@@ -118,7 +119,7 @@ RÈGLES DE COMMUNICATION & D'EXÉCUTION :
    - Pour rechercher dans toute ta mémoire : `"{py_exe}" "{mem_script}" search "<requête>"`
    - Pour lister tous tes souvenirs : `"{py_exe}" "{mem_script}" list`
 4. 🌐 RECHERCHE, NAVIGATION & CAPTURE WEB :
-   - Tu peux utiliser tes outils natifs (`search_web`, `read_url_content`, `generate_image`) ou l'outil navigateur :
+   - Tu peux utiliser tes outils natifs (`search_web`, `read_url_content`, `generate_image`), tes serveurs MCP (`playwright`, `firecrawl`, `context7`, `docker`, etc.) ou l'outil navigateur :
      `"{py_exe}" "{browser_script}" search "<requête>"`
      `"{py_exe}" "{browser_script}" fetch "<url>"`
      `"{py_exe}" "{browser_script}" screenshot "<url>" --send-tg --caption "Capture"`
@@ -257,6 +258,25 @@ async def toggle_mcp_server(name: str, enable: bool) -> Tuple[bool, str]:
 async def remove_mcp_server(name: str) -> Tuple[bool, str]:
     rc, out, err = await run_agy_subcommand(["mcp", "remove", name], timeout=12.0)
     return (rc == 0), (out or err or f"Serveur MCP '{name}' supprimé.")
+
+
+async def install_recommended_mcp_server(srv_id: str, env_value: Optional[str] = None) -> Tuple[bool, str]:
+    """Install one of the curated RECOMMENDED_MCP_SERVERS via `agy mcp add`."""
+    entry = next((s for s in config.RECOMMENDED_MCP_SERVERS if s["id"] == srv_id), None)
+    if not entry:
+        return False, f"Serveur MCP '{srv_id}' inconnu dans le catalogue."
+
+    sub_args: List[str] = ["mcp", "add"]
+    env_key = entry.get("env_key")
+    if env_key:
+        val = (env_value or os.getenv(env_key, "")).strip()
+        if val:
+            sub_args.extend(["--env", f"{env_key}={val}"])
+
+    sub_args.extend([entry["id"], "--", entry["command"]] + list(entry["args"]))
+    rc, out, err = await run_agy_subcommand(sub_args, timeout=20.0)
+    msg = out or err or f"Serveur MCP '{entry['id']}' ajouté avec succès."
+    return (rc == 0), msg
 
 
 async def list_cli_plugins() -> Tuple[str, List[Dict[str, str]]]:

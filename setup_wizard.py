@@ -11,6 +11,7 @@ import shutil
 import platform
 import subprocess
 from pathlib import Path
+from typing import List
 
 import config
 from config import find_agy_binary, BASE_DIR, ENV_FILE, SETTINGS_FILE, IS_WINDOWS
@@ -67,7 +68,7 @@ def _ensure_unix_global_symlink(agy_bin: str) -> None:
 
 def install_or_update_agy() -> str:
     """Ensure Antigravity CLI (agy) is installed and up to date."""
-    print(f"{BOLD}[1/4] Vérification d'Antigravity CLI (agy)...{RESET}")
+    print(f"{BOLD}[1/5] Vérification d'Antigravity CLI (agy)...{RESET}")
     agy_bin = find_agy()
     exists = shutil.which(agy_bin) or Path(agy_bin).exists()
 
@@ -109,7 +110,7 @@ def install_or_update_agy() -> str:
 
 def check_agy_auth(agy_bin: str) -> list:
     """Verify that Antigravity CLI can list models and is authenticated."""
-    print(f"\n{BOLD}[2/4] Connexion & Authentification Antigravity CLI...{RESET}")
+    print(f"\n{BOLD}[2/5] Connexion & Authentification Antigravity CLI...{RESET}")
     models = []
     if not (shutil.which(agy_bin) or Path(agy_bin).exists()):
         print(f"  {YELLOW}⚠ Antigravity CLI introuvable, étape d'authentification ignorée.{RESET}")
@@ -230,7 +231,7 @@ def poll_admin_from_telegram(token: str, bot_username: str) -> tuple[int | None,
 
 def configure_telegram_and_admin() -> tuple[str, int | None, str]:
     """Prompt for Telegram token and Admin ID."""
-    print(f"\n{BOLD}[3/4] Configuration du Bot Telegram...{RESET}")
+    print(f"\n{BOLD}[3/5] Configuration du Bot Telegram...{RESET}")
     existing_token = ""
     if ENV_FILE.exists():
         for line in ENV_FILE.read_text(encoding="utf-8", errors="ignore").splitlines():
@@ -260,7 +261,7 @@ def configure_telegram_and_admin() -> tuple[str, int | None, str]:
 
     bot_username = bot_info.get("username", "votre_bot")
 
-    print(f"\n{BOLD}[4/4] Configuration du Compte Administrateur...{RESET}")
+    print(f"\n{BOLD}[4/5] Configuration du Compte Administrateur...{RESET}")
     print("  Comment souhaitez-vous configurer votre compte Administrateur Telegram ?")
     print(f"    {BOLD}1{RESET}) Détection automatique en envoyant `/start` à @{bot_username} maintenant (Recommandé)")
     print(f"    {BOLD}2{RESET}) Entrer mon Telegram User ID manuellement")
@@ -291,9 +292,124 @@ def configure_telegram_and_admin() -> tuple[str, int | None, str]:
     return token, admin_id, admin_name
 
 
-def save_configuration(agy_bin: str, token: str, admin_id: int | None, admin_name: str, models: list):
+def _ensure_nodejs_available() -> bool:
+    """Ensure Node.js / npx is installed so MCP servers can run."""
+    if shutil.which("npx") or shutil.which("npx.cmd"):
+        return True
+    print(f"  {YELLOW}⚡ Node.js (`npx`) est requis pour exécuter les serveurs MCP. Installation automatique...{RESET}")
+    try:
+        if IS_WINDOWS:
+            if shutil.which("winget"):
+                subprocess.run(
+                    ["winget", "install", "-e", "--id", "OpenJS.NodeJS.LTS", "--accept-package-agreements", "--accept-source-agreements"],
+                    timeout=180,
+                )
+        else:
+            if shutil.which("apt-get"):
+                subprocess.run(["bash", "-c", "sudo apt-get update -qq && sudo apt-get install -y -qq nodejs npm || apt-get install -y -qq nodejs npm"], timeout=180)
+            elif shutil.which("dnf"):
+                subprocess.run(["bash", "-c", "sudo dnf install -y nodejs npm || dnf install -y nodejs npm"], timeout=180)
+            elif shutil.which("pacman"):
+                subprocess.run(["bash", "-c", "sudo pacman -Sy --noconfirm nodejs npm || pacman -Sy --noconfirm nodejs npm"], timeout=180)
+    except Exception as e:
+        print(f"  {YELLOW}⚠ Impossible d'installer automatiquement Node.js : {e}{RESET}")
+    return bool(shutil.which("npx") or shutil.which("npx.cmd"))
+
+
+def configure_mcp_and_skills(agy_bin: str) -> List[str]:
+    """Install the built-in Telegram Bot Mastery skill and offer recommended MCP servers."""
+    print(f"\n{BOLD}[5/5] Skill IA par défaut & Serveurs MCP Recommandés...{RESET}")
+
+    # 1. Install the built-in telegram-bot-mastery skill
+    skill_path = config.ensure_default_skill_installed()
+    if skill_path:
+        print(f"  {GREEN}✔ Skill par défaut installé :{RESET} {BOLD}telegram-bot-mastery{RESET}")
+        print(f"    (Permet à l'IA de maîtriser toutes les fonctions du bot Telegram, l'envoi de médias, la mémoire Mem0, etc.)")
+
+    # 2. Propose Recommended MCP Servers (Playwright, Firecrawl, Docker, Context7, Sequential Thinking, GitHub)
+    catalog = config.RECOMMENDED_MCP_SERVERS
+    print(f"\n  {CYAN}{BOLD}🔌 Catalogue des Serveurs MCP Recommandés :{RESET}")
+    default_nums = []
+    for idx, srv in enumerate(catalog, start=1):
+        star = f"{GREEN}[Recommandé]{RESET}" if srv.get("default_selected") else f"{YELLOW}[Optionnel]{RESET}"
+        if srv.get("default_selected"):
+            default_nums.append(str(idx))
+        print(f"    {BOLD}{idx}{RESET}) {BOLD}{srv['title']}{RESET} {star}")
+        print(f"       └ {srv['description']}")
+
+    default_str = ",".join(default_nums)
+    print(f"\n  💡 Entrez les numéros à installer séparés par des virgules (ex: {BOLD}1,2,3{RESET}),")
+    print(f"     appuyez sur {BOLD}[Entrée]{RESET} pour installer la sélection recommandée ({BOLD}{default_str}{RESET}), ou tapez {BOLD}n{RESET} pour passer.")
+    raw_sel = input(f"  Votre choix [{default_str} / all / n] : ").strip().lower()
+
+    if raw_sel in ("n", "non", "no", "s", "skip", "0"):
+        print(f"  {YELLOW}ℹ Installation MCP ignorée (vous pourrez les installer en 1 clic sur Telegram via /mcp).{RESET}")
+        return []
+
+    selected_indices: List[int] = []
+    if raw_sel in ("", "o", "oui", "y", "yes"):
+        selected_indices = [int(x) for x in default_nums]
+    elif raw_sel in ("a", "all", "tous", "tout"):
+        selected_indices = list(range(1, len(catalog) + 1))
+    else:
+        for part in raw_sel.replace(" ", ",").split(","):
+            if part.strip().isdigit():
+                val = int(part.strip())
+                if 1 <= val <= len(catalog) and val not in selected_indices:
+                    selected_indices.append(val)
+
+    if not selected_indices:
+        return []
+
+    _ensure_nodejs_available()
+    npx_cmd = "npx.cmd" if (IS_WINDOWS and shutil.which("npx.cmd")) else "npx"
+
+    installed_mcp: List[str] = []
+    for idx in selected_indices:
+        srv = catalog[idx - 1]
+        srv_id = srv["id"]
+        env_key = srv.get("env_key")
+        env_val = ""
+        if env_key:
+            env_val = os.getenv(env_key, "").strip()
+            if not env_val:
+                prompt_txt = srv.get("env_prompt") or f"Clé {env_key} (Entrée pour passer)"
+                env_val = input(f"  🔑 [{srv_id}] {prompt_txt} : ").strip()
+                if env_val:
+                    config.update_env_var(env_key, env_val)
+
+        cmd = [agy_bin, "mcp", "add"]
+        if env_key and env_val:
+            cmd.extend(["--env", f"{env_key}={env_val}"])
+        cmd.extend([srv_id, "--", npx_cmd] + list(srv["args"]))
+
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+            if res.returncode == 0:
+                print(f"  {GREEN}✔ Serveur MCP '{srv_id}' configuré avec succès !{RESET}")
+                installed_mcp.append(srv_id)
+            else:
+                err_txt = (res.stderr or res.stdout or "").strip()
+                print(f"  {YELLOW}⚠ Avertissement MCP '{srv_id}' : {err_txt}{RESET}")
+        except Exception as e:
+            print(f"  {YELLOW}⚠ Impossible d'ajouter le serveur MCP '{srv_id}' : {e}{RESET}")
+
+    return installed_mcp
+
+
+def save_configuration(agy_bin: str, token: str, admin_id: int | None, admin_name: str, models: list, installed_mcp: List[str] | None = None):
     """Write .env, settings.json, and users.json safely."""
     from config import DEFAULT_SETTINGS
+    # Preserve any API keys (e.g. FIRECRAWL_API_KEY) already written to .env
+    extra_env: dict[str, str] = {}
+    if ENV_FILE.exists():
+        for line in ENV_FILE.read_text(encoding="utf-8", errors="ignore").splitlines():
+            if "=" in line and not line.strip().startswith("#"):
+                k, v = line.split("=", 1)
+                k = k.strip()
+                if k not in ("TELEGRAM_BOT_TOKEN", "ALLOWED_USER_ID", "AGY_BIN_PATH", "WORKSPACE_DIR"):
+                    extra_env[k] = v.strip()
+
     env_lines = [
         "# Antigravity Telegram Agent v4.0 Configuration",
         f"TELEGRAM_BOT_TOKEN={token}",
@@ -301,6 +417,9 @@ def save_configuration(agy_bin: str, token: str, admin_id: int | None, admin_nam
         f"AGY_BIN_PATH={agy_bin or ''}",
         f"WORKSPACE_DIR={BASE_DIR}",
     ]
+    for k, v in extra_env.items():
+        env_lines.append(f"{k}={v}")
+
     ENV_FILE.write_text("\n".join(env_lines) + "\n", encoding="utf-8")
     if not IS_WINDOWS:
         try:
@@ -357,7 +476,10 @@ def save_configuration(agy_bin: str, token: str, admin_id: int | None, admin_nam
     print(f"  • Fichier {BOLD}.env{RESET} généré")
     print(f"  • Fichier {BOLD}settings.json{RESET} initialisé (Modèle: {settings.get('model')})")
     print(f"  • Fichier {BOLD}users.json{RESET} prêt")
-    print(f"\n  🚀 Vous pouvez gérer {BOLD}tous les paramètres{RESET} directement depuis Telegram avec {CYAN}/settings{RESET} !\n")
+    print(f"  • Skill IA {BOLD}telegram-bot-mastery{RESET} activé")
+    if installed_mcp:
+        print(f"  • Serveurs MCP configurés : {BOLD}{', '.join(installed_mcp)}{RESET}")
+    print(f"\n  🚀 Vous pouvez gérer {BOLD}tous les paramètres et serveurs MCP{RESET} depuis Telegram avec {CYAN}/settings{RESET} et {CYAN}/mcp{RESET} !\n")
 
 
 def run_wizard():
@@ -365,7 +487,8 @@ def run_wizard():
     agy_bin = install_or_update_agy()
     models = check_agy_auth(agy_bin)
     token, admin_id, admin_name = configure_telegram_and_admin()
-    save_configuration(agy_bin, token, admin_id, admin_name, models)
+    installed_mcp = configure_mcp_and_skills(agy_bin)
+    save_configuration(agy_bin, token, admin_id, admin_name, models, installed_mcp)
 
 
 if __name__ == "__main__":

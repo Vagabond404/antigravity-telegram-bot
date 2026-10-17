@@ -55,13 +55,13 @@ echo -e "${GREEN}📍 Dossier d'installation : ${INSTALL_DIR}${RESET}"
 echo -e "\n${BOLD}[1/5] Vérification des dépendances système...${RESET}"
 if command -v apt-get >/dev/null 2>&1; then
     sudo apt-get update -qq || apt-get update -qq || true
-    sudo apt-get install -y -qq python3 python3-venv python3-pip curl git ffmpeg sqlite3 || apt-get install -y -qq python3 python3-venv python3-pip curl git ffmpeg sqlite3 || true
+    sudo apt-get install -y -qq python3 python3-venv python3-pip curl git ffmpeg sqlite3 nodejs npm || apt-get install -y -qq python3 python3-venv python3-pip curl git ffmpeg sqlite3 nodejs npm || true
 elif command -v dnf >/dev/null 2>&1; then
-    sudo dnf install -y python3 python3-pip curl git ffmpeg sqlite || true
+    sudo dnf install -y python3 python3-pip curl git ffmpeg sqlite nodejs npm || true
 elif command -v pacman >/dev/null 2>&1; then
-    sudo pacman -Sy --noconfirm python python-pip curl git ffmpeg sqlite || true
+    sudo pacman -Sy --noconfirm python python-pip curl git ffmpeg sqlite nodejs npm || true
 elif command -v brew >/dev/null 2>&1; then
-    brew install python git ffmpeg || true
+    brew install python git ffmpeg node || true
 fi
 
 # 2. Install or Update Antigravity CLI (agy) + Global Symlink

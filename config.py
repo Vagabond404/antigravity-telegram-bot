@@ -277,3 +277,89 @@ def record_conversation(
             json.dump(convs, f, indent=2, ensure_ascii=False)
     except Exception as e:
         logger.warning(f"Error saving conversations: {e}")
+
+
+# Curated catalog of Recommended MCP Servers for Antigravity Telegram Agent
+_NPX_CMD = "npx.cmd" if (IS_WINDOWS and shutil.which("npx.cmd")) else "npx"
+
+RECOMMENDED_MCP_SERVERS: List[Dict[str, Any]] = [
+    {
+        "id": "playwright",
+        "title": "Playwright MCP (Navigation Web & Captures)",
+        "description": "Contrôle complet d'un navigateur headless (clics, formulaires, SPA JS, captures d'écran) — Officiel Microsoft",
+        "command": _NPX_CMD,
+        "args": ["-y", "@playwright/mcp@latest", "--headless"],
+        "env_key": None,
+        "default_selected": True,
+    },
+    {
+        "id": "firecrawl",
+        "title": "Firecrawl MCP (Scraping Web & Extraction Markdown)",
+        "description": "Transforme n'importe quel site web en Markdown propre, crawle et extrait des données structurées",
+        "command": _NPX_CMD,
+        "args": ["-y", "firecrawl-mcp"],
+        "env_key": "FIRECRAWL_API_KEY",
+        "env_prompt": "Clé API Firecrawl (optionnel, sur firecrawl.dev — Entrée pour configurer plus tard)",
+        "default_selected": True,
+    },
+    {
+        "id": "docker",
+        "title": "Docker MCP (Conteneurs, Logs & Stacks Docker)",
+        "description": "Pilotez vos conteneurs, images, volumes, réseaux et logs Docker directement depuis Telegram",
+        "command": _NPX_CMD,
+        "args": ["-y", "@quantgeekdev/docker-mcp"],
+        "env_key": None,
+        "default_selected": True,
+    },
+    {
+        "id": "context7",
+        "title": "Context7 MCP (Documentation Code Temps Réel)",
+        "description": "Injecte la documentation officielle à jour de toutes les librairies/frameworks (React, FastAPI, etc.)",
+        "command": _NPX_CMD,
+        "args": ["-y", "@upstash/context7-mcp"],
+        "env_key": None,
+        "default_selected": True,
+    },
+    {
+        "id": "sequential-thinking",
+        "title": "Sequential Thinking MCP (Raisonnement Avancé)",
+        "description": "Décomposition structurée de problèmes complexes en étapes révisables avec arbre de réflexion",
+        "command": _NPX_CMD,
+        "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+        "env_key": None,
+        "default_selected": True,
+    },
+    {
+        "id": "github",
+        "title": "GitHub MCP (Dépôts, Pull Requests, Issues & Code)",
+        "description": "Gestion complète de vos dépôts GitHub, branches, commits, Issues et Pull Requests",
+        "command": _NPX_CMD,
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "env_key": "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "env_prompt": "Token GitHub Personal Access Token (optionnel — Entrée pour passer)",
+        "default_selected": False,
+    },
+]
+
+
+def ensure_default_skill_installed() -> Optional[str]:
+    """
+    Ensure the built-in `telegram-bot-mastery` skill and `AGENTS.md` rules are installed both:
+      1. In the repository workspace (`.agents/skills/telegram-bot-mastery/SKILL.md`)
+      2. Globally in `~/.gemini/config/skills/telegram-bot-mastery/SKILL.md`
+    so the AI agent always knows how to master the Telegram bot regardless of its active CWD.
+    """
+    repo_skill = BASE_DIR / ".agents" / "skills" / "telegram-bot-mastery" / "SKILL.md"
+    if not repo_skill.is_file():
+        return None
+
+    try:
+        global_skill_dir = Path.home() / ".gemini" / "config" / "skills" / "telegram-bot-mastery"
+        global_skill_dir.mkdir(parents=True, exist_ok=True)
+        global_skill_file = global_skill_dir / "SKILL.md"
+        shutil.copy2(repo_skill, global_skill_file)
+        return str(global_skill_file)
+    except Exception as e:
+        logger.debug(f"Could not sync global skill: {e}")
+        return str(repo_skill)
+

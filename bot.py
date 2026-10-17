@@ -52,6 +52,7 @@ from agent_runner import (
     fetch_available_agents,
     list_mcp_servers,
     toggle_mcp_server,
+    install_recommended_mcp_server,
     list_cli_plugins,
     run_plugin_action,
     manage_remote_control,
@@ -83,6 +84,7 @@ from ui_helpers import (
     get_verbosity_selection_keyboard,
     get_agents_keyboard,
     get_mcp_keyboard,
+    get_mcp_catalog_keyboard,
     get_plugins_keyboard,
     get_remote_control_keyboard,
     get_sessions_keyboard,
@@ -290,8 +292,9 @@ async def post_init(application) -> None:
 
     try:
         seed_default_memories()
+        config.ensure_default_skill_installed()
     except Exception as e:
-        logger.warning(f"Non-fatal init warning (memory): {e}")
+        logger.warning(f"Non-fatal init warning (memory/skill): {e}")
 
     # Pre-fetch available models from `agy models`
     try:
@@ -1226,6 +1229,48 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
+    if data == "mcp_catalog":
+        await query.answer("Chargement du catalogue MCP...")
+        servers = await list_mcp_servers()
+        installed_names = [s["name"] for s in servers]
+        lines = [
+            "⚡ <b>Catalogue des Serveurs MCP Recommandés (Installation en 1 Clic)</b>\n",
+            "Cliquez sur un serveur ci-dessous pour l'installer et l'activer automatiquement dans Antigravity CLI :\n",
+        ]
+        for srv in config.RECOMMENDED_MCP_SERVERS:
+            st = "✅ Installé" if srv["id"] in installed_names else "⚪ Disponible"
+            lines.append(f"• <b>{h(srv['title'])}</b> [{st}]\n  <i>{h(srv['description'])}</i>")
+        await safe_edit_message(
+            query.message,
+            "\n".join(lines),
+            reply_markup=get_mcp_catalog_keyboard(installed_names),
+        )
+        return
+
+    if data.startswith("mcp_quick_install:"):
+        target_id = data.split(":", 1)[1]
+        await query.answer("Installation MCP en cours...")
+        if target_id == "all_default":
+            results = []
+            for srv in config.RECOMMENDED_MCP_SERVERS:
+                if srv.get("default_selected"):
+                    ok, msg = await install_recommended_mcp_server(srv["id"])
+                    results.append(f"{'✅' if ok else '⚠️'} <b>{h(srv['id'])}</b> : <code>{h(msg)}</code>")
+            summary = "\n".join(results)
+        else:
+            ok, msg = await install_recommended_mcp_server(target_id)
+            summary = f"{'✅' if ok else '⚠️'} <b>{h(target_id)}</b> : <code>{h(msg)}</code>"
+
+        servers = await list_mcp_servers()
+        installed_names = [s["name"] for s in servers]
+        await safe_edit_message(
+            query.message,
+            f"🔌 <b>Résultat de l'installation MCP :</b>\n{summary}\n\n"
+            "<i>Cliquez sur un autre serveur ou revenez à la liste active :</i>",
+            reply_markup=get_mcp_catalog_keyboard(installed_names),
+        )
+        return
+
     if data == "mcp_add_prompt":
         await query.answer()
         pending_admin_input[uid] = "mcp_add"
@@ -1235,7 +1280,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             "➕ <b>Ajouter un Serveur MCP à Antigravity CLI</b>\n\n"
             "Envoyez maintenant la commande d'ajout au format :\n"
             "<code>&lt;nom&gt; &lt;commande_ou_url&gt;</code>\n\n"
-            "<i>Exemple : <code> memory npx -y @modelcontextprotocol/server-memory</code></i>",
+            "<i>Exemple : <code>playwright npx -y @playwright/mcp@latest</code></i>",
             reply_markup=kb,
         )
         return
