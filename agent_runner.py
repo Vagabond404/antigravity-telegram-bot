@@ -24,7 +24,6 @@ import config
 from config import (
     BASE_DIR,
     TEMP_DIR,
-    VAULT_DIR,
     IS_WINDOWS,
     find_agy_binary,
     record_conversation,
@@ -97,7 +96,6 @@ def build_system_prompt(settings: dict) -> str:
     py_exe = sys.executable
     tg_send_script = str(BASE_DIR / "tg_send.py")
     mem_script = str(BASE_DIR / "mem.py")
-    vault_script = str(BASE_DIR / "vault_manager.py")
     browser_script = str(BASE_DIR / "browser_tool.py")
     cmd_script = str(BASE_DIR / "command_manager.py")
 
@@ -111,30 +109,25 @@ RÈGLES DE COMMUNICATION & D'EXÉCUTION :
    Dès que tu génères, télécharges ou prépares un fichier pour l'utilisateur (image, graphique, PDF, vidéo, audio, archive, code), envoie-le directement sur Telegram avec la commande :
    `"{py_exe}" "{tg_send_script}" --file "<chemin_absolu_du_fichier>" --caption "Description"`
    - Pour forcer un type précis : `--photo`, `--video`, `--audio`, `--voice`, ou `--document`.
-3. 🧠 MÉMOIRE LONG-TERME PROACTIVE & DEUXIÈME CERVEAU (INTER-CONVERSATIONS) :
+3. 🧠 MÉMOIRE LONG-TERME PROACTIVE INTER-CONVERSATIONS (Mem0 / SQLite) :
    Tu DOIS conserver la mémoire entre toutes les discussions (même après `/clear` ou redémarrage) :
    - Dès que l'utilisateur partage une **info personnelle** (prénom, métier, appareils, serveurs, OS), une **préférence** (langage, style, habitudes) ou une **règle**, enregistre-la PROACTIVEMENT sans attendre qu'on te le demande :
      `"{py_exe}" "{mem_script}" add "<fait précis>" --category <profile|preferences|rules|infra> --key "<identifiant_court>" --importance 5`
-   - Dès que tu travailles sur un **projet** (nouveau projet, architecture, chemin du dossier, stack, avancement, décisions techniques), enregistre/mets à jour sa mémoire :
+   - Dès que tu travailles sur un **projet** (nouveau projet, architecture, chemin du dossier, stack, avancement, décisions techniques), enregistre ou mets à jour sa mémoire via sa clé unique :
      `"{py_exe}" "{mem_script}" add "<Nom du projet : dossier, stack, état actuel>" --category projet --key "projet_<nom>" --importance 5`
    - Pour rechercher dans toute ta mémoire : `"{py_exe}" "{mem_script}" search "<requête>"`
-4. 📚 COFFRE DE CONNAISSANCES MARKDOWN OBSIDIAN (`{VAULT_DIR}`) :
-   - Pour chaque projet important ou documentation structurée, crée ou mets à jour une fiche dédiée dans `01_Projets/<Nom_Projet>.md` :
-     `"{py_exe}" "{vault_script}" write "01_Projets/<Nom_Projet>.md" "<contenu markdown détaillé>"`
-   - Lister les fiches : `"{py_exe}" "{vault_script}" list`
-   - Lire une fiche : `"{py_exe}" "{vault_script}" read "<note>"`
-   - Journal quotidien : `"{py_exe}" "{vault_script}" daily "<résumé action>"`
-5. 🌐 RECHERCHE, NAVIGATION & CAPTURE WEB :
+   - Pour lister tous tes souvenirs : `"{py_exe}" "{mem_script}" list`
+4. 🌐 RECHERCHE, NAVIGATION & CAPTURE WEB :
    - Tu peux utiliser tes outils natifs (`search_web`, `read_url_content`, `generate_image`) ou l'outil navigateur :
      `"{py_exe}" "{browser_script}" search "<requête>"`
      `"{py_exe}" "{browser_script}" fetch "<url>"`
      `"{py_exe}" "{browser_script}" screenshot "<url>" --send-tg --caption "Capture"`
-6. 🕹️ COMMANDES TELEGRAM DYNAMIQUES :
+5. 🕹️ COMMANDES TELEGRAM DYNAMIQUES :
    - Tu peux créer ou supprimer des commandes Telegram (`/nom`) à la demande de l'utilisateur :
      `"{py_exe}" "{cmd_script}" add <nom> "<description>" "<template {{prompt}}>"`
 """
     if multi_agent:
-        prompt += """7. 🤝 ORCHESTRATION MULTI-AGENTS & SOUS-AGENTS :
+        prompt += """6. 🤝 ORCHESTRATION MULTI-AGENTS & SOUS-AGENTS :
    - Tu disposes des outils natifs `invoke_subagent`, `define_subagent`, `manage_subagents` et `send_message`.
    - Pour les tâches complexes, de recherche multiple ou de développement parallèle, n'hésite pas à définir et lancer des sous-agents spécialisés en parallèle (`self`, `research`, ou des sous-agents sur mesure via `define_subagent`).
 """

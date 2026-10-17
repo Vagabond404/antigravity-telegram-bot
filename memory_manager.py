@@ -14,7 +14,7 @@ import html
 import numpy as np
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from config import BASE_DIR, VAULT_DIR
+from config import BASE_DIR
 
 try:
     from fastembed import TextEmbedding
@@ -429,7 +429,7 @@ def get_summary_html(user_id: Optional[str] = None) -> str:
         cat = m["category"]
         categories.setdefault(cat, []).append(m)
 
-    lines = ["🧠 <b>Deuxième Cerveau & Souvenirs Actifs (Mem0)</b>\n"]
+    lines = ["🧠 <b>Mémoire Long-Terme & Souvenirs Actifs (Mem0)</b>\n"]
     cat_icons = {
         "profile": "👤",
         "preferences": "⭐",
@@ -439,7 +439,6 @@ def get_summary_html(user_id: Optional[str] = None) -> str:
         "user_note": "📝",
         "system": "🤖",
         "tools": "🔧",
-        "vault": "📚",
         "general": "💡",
     }
 
@@ -453,18 +452,17 @@ def get_summary_html(user_id: Optional[str] = None) -> str:
 
     lines.append(
         "<i>💡 Commandes : <code>/memory &lt;recherche&gt;</code>, "
-        "<code>/remember &lt;texte&gt;</code>, <code>/forget &lt;id&gt;</code>, <code>/vault</code></i>"
+        "<code>/remember &lt;texte&gt;</code>, <code>/forget &lt;id&gt;</code></i>"
     )
     return "\n".join(lines)
 
 
 def get_relevant_context(query: str, user_id: Optional[str] = None) -> str:
     """
-    Build the complete Long-Term Memory & Second Brain context block injected into the Agent:
+    Build the complete Long-Term Memory context block injected into the Agent:
       1. Core User Profile, Preferences & Rules (always available across all chats)
       2. Active Projects & Infrastructure memories
       3. Semantic & Keyword matches for the current user prompt
-      4. Structured Obsidian Markdown Vault notes (Projects index + matching snippets)
     """
     ctx_parts = []
     seen_contents = set()
@@ -513,25 +511,6 @@ def get_relevant_context(query: str, user_id: Optional[str] = None) -> str:
     if mem_sections:
         ctx_parts.append("[🧠 MÉMOIRE LONG-TERME INTER-CONVERSATIONS (Mem0)]\n" + "\n\n".join(mem_sections))
 
-    # 4. Obsidian Markdown Vault (Project notes index + search snippets)
-    try:
-        from vault_manager import list_notes, search_notes
-        all_notes = list_notes()
-        note_paths = [n["path"] for n in all_notes if not n["path"].startswith("00_System/")]
-        v_results = search_notes(query)
-
-        vault_lines = []
-        if note_paths:
-            vault_lines.append("Fiches Markdown disponibles dans le coffre : " + ", ".join(f"`{p}`" for p in note_paths[:15]))
-        if v_results:
-            for item in v_results[:3]:
-                snippet_str = " | ".join(item["snippets"][:2])
-                vault_lines.append(f"• Extrait de `{item['path']}` : {snippet_str}")
-        if vault_lines:
-            ctx_parts.append(f"[📚 COFFRE DE CONNAISSANCES OBSIDIAN ({VAULT_DIR})]\n" + "\n".join(vault_lines))
-    except Exception:
-        pass
-
     return "\n\n".join(ctx_parts)
 
 
@@ -542,7 +521,7 @@ def seed_default_memories():
     defaults = [
         ("Agent autonome propulsé par Google Antigravity CLI et piloté via Telegram.", "system", "agent_identity"),
         ("Règle d'affichage Telegram : Pendant l'exécution, le suivi s'affiche en direct. La réponse finale doit être propre, claire et bien structurée.", "rules", "display_rule"),
-        ("Mémoire proactive : Toujours enregistrer les informations personnelles, préférences et détails des projets de l'utilisateur avec mem.py et vault_manager.py pour s'en souvenir entre les conversations.", "rules", "proactive_memory"),
+        ("Mémoire proactive : Toujours enregistrer les informations personnelles, préférences et détails des projets de l'utilisateur avec mem.py pour s'en souvenir entre toutes les conversations.", "rules", "proactive_memory"),
     ]
     for text, cat, key in defaults:
         add_memory(text, category=cat, key=key, importance=4)

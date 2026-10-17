@@ -113,10 +113,11 @@ Vous pouvez ensuite lancer le bot à tout moment en double-cliquant sur **`start
 | `/grill_me <idée>` | 🎤 Entretien interactif pas-à-pas pour cadrer un projet |
 | `/boost <tâche>` | 🚀 Activer le raisonnement maximal et la vérification rigoureuse |
 | `/teamwork <projet>` | 👥 Mobiliser des sous-agents spécialisés en parallèle |
-| `/memories` | 🧠 Explorer le Second Cerveau SQLite & graphe de connaissances |
-| `/vault` | 📓 Explorer les notes Markdown (Obsidian Vault) |
+| `/memory` | 🧠 Explorer la mémoire long-terme vectorielle Mem0 (Profil, Préférences, Projets) |
+| `/remember <texte>` | 📌 Mémoriser une information permanente dans Mem0 |
+| `/forget <id>` | 🗑️ Supprimer un souvenir de la mémoire long-terme |
 | `/status` | 📊 Tableau de bord télémétrique du système hôte (CPU, RAM, Disque, Réseau) |
-| `/access` | 👥 Gérer les utilisateurs et permissions (Administrateurs / Invités) |
+| `/users` | 👥 Gérer les utilisateurs et permissions (Administrateurs / Invités) |
 
 ---
 

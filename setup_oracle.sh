@@ -34,8 +34,7 @@ fi
 echo ""
 echo "📁 [2/6] Préparation des répertoires applicatifs..."
 BOT_DIR="/opt/antigravity-bot"
-VAULT_DIR="/opt/obsidian-vault"
-mkdir -p "$BOT_DIR" "$VAULT_DIR" /root/.gemini
+mkdir -p "$BOT_DIR" /root/.gemini
 
 # 4. Installation d'Antigravity CLI (agy)
 echo ""

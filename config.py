@@ -50,11 +50,6 @@ else:
 TEMP_DIR = BASE_DIR / "tmp"
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
-# Obsidian / Markdown Vault directory
-_default_vault = Path("/opt/obsidian-vault") if (IS_LINUX and Path("/opt/obsidian-vault").exists()) else (BASE_DIR / "vault")
-VAULT_DIR = Path(os.getenv("OBSIDIAN_VAULT_PATH", str(_default_vault))).resolve()
-VAULT_DIR.mkdir(parents=True, exist_ok=True)
-
 # Default Workspace directory for the agent
 _raw_ws = os.getenv("WORKSPACE_DIR", "").strip()
 if _raw_ws and (not IS_WINDOWS or not _raw_ws.startswith("/")):

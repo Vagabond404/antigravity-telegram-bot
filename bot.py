@@ -5,7 +5,7 @@ bot.py - Antigravity Universal Telegram Gateway (v4.0 - Full CLI & Multi-Agent E
 - Multi-Agent & Subagent orchestration (`invoke_subagent`, `define_subagent`, live subagent stream)
 - Full bidirectional multimedia (Photos, Videos, Audio, Voice, Animations, Documents, Archives)
 - Interactive Telegram Control Center (`/settings`, `/models`, `/mcp`, `/plugins`, `/remote`, `/sessions`)
-- Persistent vector memory (Mem0) & Markdown Vault (Obsidian)
+- Persistent vector memory (Mem0) across all conversations
 - Zero hardcoded personal information — ready for public GitHub deployment
 """
 
@@ -35,7 +35,6 @@ import config
 from config import (
     BASE_DIR,
     TEMP_DIR,
-    VAULT_DIR,
     SETTINGS_FILE,
     DEFAULT_SETTINGS,
     TRANSIENT_MSGS_FILE,
@@ -96,12 +95,6 @@ from memory_manager import (
     get_summary_html,
     search_memories,
     seed_default_memories,
-)
-from vault_manager import (
-    list_notes,
-    read_note,
-    search_notes,
-    seed_vault_structure,
 )
 
 h = html.escape
@@ -285,7 +278,7 @@ async def sync_telegram_commands(bot) -> None:
 
 
 async def post_init(application) -> None:
-    logger.info("Exécution du post_init (Initialisation Mem0, Vault, Modèles CLI et Services)...")
+    logger.info("Exécution du post_init (Initialisation Mem0, Modèles CLI et Services)...")
 
     import socket
     for _ in range(10):
@@ -297,9 +290,8 @@ async def post_init(application) -> None:
 
     try:
         seed_default_memories()
-        seed_vault_structure()
     except Exception as e:
-        logger.warning(f"Non-fatal init warning (memory/vault): {e}")
+        logger.warning(f"Non-fatal init warning (memory): {e}")
 
     # Pre-fetch available models from `agy models`
     try:
@@ -375,7 +367,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• 🤝 <b>Multi-Agents & Sous-Agents :</b> Orchestration parallèle de sous-agents autonomes (<code>/agents</code>, <code>/teamwork</code>).\n"
             "• 📤 <b>Multimédia Bidirectionnel :</b> Envoyez et recevez images, vidéos, audios, notes vocales, PDF et archives sans limite.\n"
             "• 🔌 <b>Écosystème CLI Complet :</b> Gérez vos serveurs <code>/mcp</code>, <code>/plugins</code>, <code>/remote</code> et <code>/sessions</code> en un clic.\n"
-            "• 🧠 <b>Deuxième Cerveau :</b> Mémoire vectorielle locale Mem0 (<code>/memory</code>) & Coffre Markdown Obsidian (<code>/vault</code>).\n\n"
+            "• 🧠 <b>Mémoire Long-Terme Inter-Conversations :</b> Mémoire vectorielle locale Mem0 (<code>/memory</code>, <code>/remember</code>, <code>/forget</code>).\n\n"
             "💡 <i>Envoyez un message, une photo, un fichier ou tapez <code>/settings</code> pour tout personnaliser !</i>"
         )
         await update.message.reply_text(
@@ -425,9 +417,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• <code>/plan &lt;sujet&gt;</code> : Planification architecturale détaillée\n"
         "• <code>/grill_me &lt;projet&gt;</code> : Entretien interactif de conception\n"
         "• <code>/commands</code> : Créer vos propres commandes Telegram sur mesure\n\n"
-        "<b>🧠 Deuxième Cerveau & Fichiers :</b>\n"
-        "• <code>/memory</code>, <code>/remember</code>, <code>/forget</code> : Mémoire vectorielle Mem0\n"
-        "• <code>/vault</code> : Coffre de connaissances Markdown Obsidian"
+        "<b>🧠 Mémoire Long-Terme :</b>\n"
+        "• <code>/memory</code>, <code>/remember</code>, <code>/forget</code> : Mémoire vectorielle Mem0 (Profil, Préférences, Projets)"
     )
     await update.message.reply_text(help_text, parse_mode=PM)
 
@@ -785,49 +776,6 @@ async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("\n".join(lines), parse_mode=PM)
     else:
         await update.message.reply_text(get_summary_html(), parse_mode=PM)
-
-
-async def cmd_vault(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id, update.effective_user):
-        await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
-        return
-    args = context.args
-    if not args:
-        notes = list_notes()
-        if not notes:
-            await update.message.reply_text(
-                f"📚 <b>Coffre Obsidian Markdown (<code>{h(str(VAULT_DIR))}</code>)</b>\n\nAucune note trouvée.",
-                parse_mode=PM,
-            )
-            return
-        lines = [f"📚 <b>Coffre de Connaissances Markdown (<code>{h(str(VAULT_DIR))}</code>)</b>\n"]
-        for n in notes[:15]:
-            lines.append(f"• 📄 <code>{h(n['path'])}</code>")
-        if len(notes) > 15:
-            lines.append(f"\n<i>... et {len(notes) - 15} autres notes.</i>")
-        lines.append("\n💡 <i>Utilisation : <code>/vault &lt;recherche&gt;</code> ou <code>/vault read &lt;fichier&gt;</code></i>")
-        await update.message.reply_text("\n".join(lines), parse_mode=PM)
-    elif args[0].lower() == "read" and len(args) > 1:
-        np = " ".join(args[1:])
-        res = read_note(np)
-        if "error" in res:
-            await update.message.reply_text(f"❌ {h(res['error'])}", parse_mode=PM)
-        else:
-            prev = res["content"][:3000]
-            html_body = md_to_html(prev)
-            await safe_reply_message(update.message, f"📄 <b>Note :</b> <code>{h(res['path'])}</code>\n\n{html_body}")
-    else:
-        q = " ".join(args)
-        res = search_notes(q)
-        if not res:
-            await update.message.reply_text(f"🔍 Aucune note correspondant à : <code>{h(q)}</code>", parse_mode=PM)
-            return
-        lines = [f"🔍 <b>Notes trouvées pour :</b> <code>{h(q)}</code>\n"]
-        for r in res[:6]:
-            lines.append(f"• 📄 <code>{h(r['path'])}</code> (score: {r['score']})")
-            for s in r["snippets"][:2]:
-                lines.append(f"  └ <i>{h(s)}</i>")
-        await update.message.reply_text("\n".join(lines), parse_mode=PM)
 
 
 async def cmd_remember(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1922,7 +1870,7 @@ def _extract_file_paths(text: str) -> List[str]:
         str((BASE_DIR / f).resolve())
         for f in (
             "bot.py", "agent_runner.py", "config.py", "ui_helpers.py", "auth_manager.py",
-            "command_manager.py", "memory_manager.py", "vault_manager.py", "setup_wizard.py",
+            "command_manager.py", "memory_manager.py", "mem.py", "setup_wizard.py",
             "server_watchdog.py", "log_scanner.py", "tg_send.py", "browser_tool.py",
             "requirements.txt", "settings.json", "users.json", "custom_commands.json",
         )
@@ -2387,7 +2335,6 @@ def main():
     app.add_handler(CommandHandler("commands", cmd_commands))
     app.add_handler(CommandHandler("memory", cmd_memory))
     app.add_handler(CommandHandler("mem", cmd_memory))
-    app.add_handler(CommandHandler("vault", cmd_vault))
     app.add_handler(CommandHandler("remember", cmd_remember))
     app.add_handler(CommandHandler("forget", cmd_forget))
     app.add_handler(CommandHandler("clear", cmd_clear))

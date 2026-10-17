@@ -71,7 +71,6 @@ $files = @(
     "auth_manager.py",
     "memory_manager.py",
     "mem.py",
-    "vault_manager.py",
     "browser_tool.py",
     "requirements.txt",
     ".env.example",
