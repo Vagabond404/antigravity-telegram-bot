@@ -42,6 +42,7 @@ PROTECTED_SYSTEM_COMMANDS: Dict[str, str] = {
     "services": "État de santé du système et des services",
     "autoheal": "Surveillance autonome des logs & Auto-Heal IA",
     "users": "Gérer les utilisateurs et permissions",
+    "update": "Vérifier et installer les mises à jour GitHub & Antigravity CLI",
     "update_cli": "Mettre à jour Antigravity CLI vers la dernière version",
 }
 

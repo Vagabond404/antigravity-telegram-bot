@@ -90,6 +90,8 @@ from ui_helpers import (
     get_sessions_keyboard,
     get_workspace_keyboard,
     get_persona_keyboard,
+    format_update_check_html,
+    get_update_prompt_keyboard,
 )
 from memory_manager import (
     add_or_update_memory,
@@ -97,6 +99,16 @@ from memory_manager import (
     get_summary_html,
     search_memories,
     seed_default_memories,
+)
+from updater import (
+    PENDING_UPDATE_ACK_FILE,
+    check_for_updates,
+    should_notify_for_commit,
+    mark_commit_notified,
+    mark_commit_dismissed,
+    perform_safe_update,
+    spawn_detached_restarter,
+    load_local_version_manifest,
 )
 
 h = html.escape
@@ -311,16 +323,53 @@ async def post_init(application) -> None:
     await sync_telegram_commands(application.bot)
 
     admin_id = auth_mgr.get_primary_admin_id()
-    if admin_id:
+    just_completed_update = False
+
+    # Check if we just restarted after an autonomous self-update
+    if PENDING_UPDATE_ACK_FILE.is_file():
+        try:
+            ack_data = json.loads(PENDING_UPDATE_ACK_FILE.read_text(encoding="utf-8"))
+            PENDING_UPDATE_ACK_FILE.unlink(missing_ok=True)
+            just_completed_update = True
+            ack_chat = ack_data.get("chat_id") or admin_id
+            ack_msg_id = ack_data.get("message_id")
+            bot_ver = ack_data.get("bot_version", "4.1.0")
+            old_sha = ack_data.get("old_sha", "")
+            new_sha = ack_data.get("new_sha", "")
+            agy_ver = ack_data.get("agy_version", "")
+            done_text = (
+                "✅ <b>Mise à Jour Terminée &amp; Système Redémarré avec Succès !</b>\n\n"
+                f"• 📦 <b>Version du Bot :</b> <code>v{h(bot_ver)}</code> (<code>{h(old_sha)}</code> ➔ <code>{h(new_sha)}</code>)\n"
+                f"• ⚡ <b>Antigravity CLI :</b> <code>v{h(agy_ver)}</code> (Compatible ✅)\n"
+                f"• 🧠 <b>Modèle actif :</b> <code>{h(settings.get('model', ''))}</code>\n"
+                "• 🛡️ <b>Données, Mémoire Mem0, Sessions &amp; Skills :</b> 100% préservés !"
+            )
+            if ack_chat and ack_msg_id:
+                try:
+                    await application.bot.edit_message_text(
+                        chat_id=ack_chat,
+                        message_id=ack_msg_id,
+                        text=done_text,
+                        parse_mode=PM,
+                    )
+                except Exception:
+                    await application.bot.send_message(chat_id=ack_chat, text=done_text, parse_mode=PM)
+            elif ack_chat:
+                await application.bot.send_message(chat_id=ack_chat, text=done_text, parse_mode=PM)
+        except Exception as e:
+            logger.warning(f"Failed processing post-update ACK: {e}")
+
+    if admin_id and not just_completed_update:
         try:
             _, report_html, has_healed = await check_and_heal_services(auto_heal=True)
             agent_name = settings.get("agent_name", "Antigravity Agent")
+            ver_info = load_local_version_manifest()
             heal_notice = "\n<i>(Services relancés automatiquement)</i>" if has_healed else ""
             boot_msg = (
-                f"🟢 <b>{h(agent_name)} est en ligne !</b>{heal_notice}\n\n"
+                f"🟢 <b>{h(agent_name)} (v{h(ver_info.get('bot_version', '4.1.0'))}) est en ligne !</b>{heal_notice}\n\n"
                 f"{report_html}\n\n"
                 f"• 🧠 <b>Modèle actif :</b> <code>{h(settings.get('model', ''))}</code>\n"
-                f"• 🎛️ <i>Tapez /settings pour ouvrir le Centre de Contrôle ou /help pour le guide.</i>"
+                f"• 🎛️ <i>Tapez /settings pour le Centre de Contrôle, /update pour vérifier les mises à jour ou /help.</i>"
             )
             await application.bot.send_message(chat_id=admin_id, text=boot_msg, parse_mode=PM)
         except Exception as be:
@@ -332,6 +381,7 @@ async def post_init(application) -> None:
     log_scanner.register_dispatch_callback(_on_auto_heal_alert)
     if not IS_WINDOWS:
         asyncio.create_task(auto_heal_background_worker())
+    asyncio.create_task(auto_update_watcher_worker(application))
 
 
 async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -625,6 +675,22 @@ async def cmd_workspace(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append("• <b>Répertoires Secondaires (<code>--add-dir</code>) :</b> <i>Aucun</i>")
 
     await update.message.reply_text("\n".join(lines), reply_markup=get_workspace_keyboard(settings), parse_mode=PM)
+
+
+async def cmd_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id, update.effective_user):
+        await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
+        return
+    msg = await update.message.reply_text(
+        "🔍 <i>Vérification des mises à jour sur GitHub et de la version d'Antigravity CLI...</i>",
+        parse_mode=PM,
+    )
+    info = await check_for_updates()
+    await safe_edit_message(
+        msg,
+        format_update_check_html(info, is_push_alert=False),
+        reply_markup=get_update_prompt_keyboard(info),
+    )
 
 
 async def cmd_update_cli(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1501,7 +1567,81 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    # --- CLI Self-Update ---
+    # --- System & CLI Auto-Update ---
+    if data == "sys_update:check":
+        await query.answer("Vérification sur GitHub...")
+        await safe_edit_message(
+            query.message,
+            "🔍 <i>Vérification des mises à jour sur GitHub et de la compatibilité Antigravity CLI...</i>",
+        )
+        info = await check_for_updates()
+        await safe_edit_message(
+            query.message,
+            format_update_check_html(info, is_push_alert=False),
+            reply_markup=get_update_prompt_keyboard(info),
+        )
+        return
+
+    if data == "sys_update:files":
+        await query.answer("Chargement des fichiers modifiés...")
+        info = await check_for_updates()
+        files = info.get("changed_files", []) or []
+        files_txt = "\n".join(f"• <code>{h(f)}</code>" for f in files[:25]) or "<i>Aucun fichier modifié.</i>"
+        if len(files) > 25:
+            files_txt += f"\n<i>... et {len(files) - 25} autres fichiers.</i>"
+        await safe_edit_message(
+            query.message,
+            f"📂 <b>Fichiers modifiés dans cette mise à jour ({len(files)}) :</b>\n\n{files_txt}\n\n"
+            "🛡️ <i>Vos données personnelles (<code>.env</code>, <code>memory.db</code>, discussions, skills) ne seront pas touchées.</i>",
+            reply_markup=get_update_prompt_keyboard(info),
+        )
+        return
+
+    if data.startswith("sys_update:dismiss:"):
+        sha_part = data.split(":", 2)[2]
+        info = await check_for_updates()
+        full_sha = info.get("remote_sha_full") or sha_part
+        mark_commit_dismissed(full_sha)
+        await query.answer("Mise à jour reportée.")
+        await safe_edit_message(
+            query.message,
+            "⏳ <b>Mise à jour reportée.</b>\n"
+            "<i>Vous pourrez la lancer à tout moment via <code>/update</code> ou depuis <code>/settings</code>.</i>",
+        )
+        return
+
+    if data == "sys_update:confirm":
+        if runner.is_running:
+            await query.answer("⚠️ Une tâche IA est en cours. Attendez sa fin ou tapez /abort.", show_alert=True)
+            return
+        await query.answer("🚀 Lancement de la mise à jour automatique...")
+
+        async def _progress(step_text: str):
+            await safe_edit_message(
+                query.message,
+                f"🚀 <b>Mise à Jour Automatique en Cours...</b>\n\n{h(step_text)}",
+            )
+
+        ok, res_msg = await perform_safe_update(
+            chat_id=query.message.chat_id,
+            message_id=query.message.message_id,
+            on_progress=_progress,
+        )
+        if not ok:
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Retour", callback_data="sys_update:check")]])
+            await safe_edit_message(
+                query.message,
+                f"❌ <b>Échec de la mise à jour automatique :</b>\n<code>{h(res_msg)}</code>\n\n"
+                "🛡️ <i>Vos données et votre configuration actuelle sont restées intactes.</i>",
+                reply_markup=kb,
+            )
+            return
+
+        # Trigger detached restarter and exit current process cleanly
+        spawn_detached_restarter(os.getpid())
+        await asyncio.sleep(0.8)
+        os._exit(0)
+
     if data == "cli_update":
         await query.answer("Mise à jour d'Antigravity CLI en cours...")
         await safe_edit_message(
@@ -1915,9 +2055,9 @@ def _extract_file_paths(text: str) -> List[str]:
         str((BASE_DIR / f).resolve())
         for f in (
             "bot.py", "agent_runner.py", "config.py", "ui_helpers.py", "auth_manager.py",
-            "command_manager.py", "memory_manager.py", "mem.py", "setup_wizard.py",
+            "command_manager.py", "memory_manager.py", "mem.py", "setup_wizard.py", "updater.py",
             "server_watchdog.py", "log_scanner.py", "tg_send.py", "browser_tool.py",
-            "requirements.txt", "settings.json", "users.json", "custom_commands.json",
+            "requirements.txt", "settings.json", "users.json", "custom_commands.json", "VERSION.json",
         )
     }
 
@@ -2303,6 +2443,37 @@ async def auto_heal_background_worker():
         await asyncio.sleep(max(30, interval))
 
 
+async def auto_update_watcher_worker(application):
+    """
+    Background worker that checks the GitHub repository every 10 minutes.
+    When a new push/commit or required Antigravity CLI update is detected,
+    sends an interactive notification to the Administrator on Telegram asking if they want to update.
+    """
+    logger.info("Démarrage du worker de surveillance des mises à jour GitHub (Auto-Update Watcher)...")
+    await asyncio.sleep(60)
+    while True:
+        try:
+            if not runner.is_running:
+                admin_id = auth_mgr.get_primary_admin_id()
+                if admin_id:
+                    info = await check_for_updates()
+                    if info.get("ok") and info.get("update_available"):
+                        remote_sha_full = info.get("remote_sha_full", "")
+                        if should_notify_for_commit(remote_sha_full):
+                            mark_commit_notified(remote_sha_full)
+                            alert_html = format_update_check_html(info, is_push_alert=True)
+                            kb = get_update_prompt_keyboard(info)
+                            await application.bot.send_message(
+                                chat_id=admin_id,
+                                text=alert_html,
+                                reply_markup=kb,
+                                parse_mode=PM,
+                            )
+        except Exception as e:
+            logger.debug(f"Auto-update watcher check warning: {e}")
+        await asyncio.sleep(600)
+
+
 async def handle_dynamic_command_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id, update.effective_user):
         await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
@@ -2343,7 +2514,7 @@ def main():
         logger.error("TELEGRAM_BOT_TOKEN toujours manquant. Exécutez `python setup_wizard.py`.")
         sys.exit(1)
 
-    logger.info("Démarrage Antigravity Telegram Bot v4.0 (Universal Windows/Linux, Multi-Agent, Full CLI)...")
+    logger.info("Démarrage Antigravity Telegram Bot v4.1 (Universal Windows/Linux, Multi-Agent, Auto-Update)...")
     t_request = HTTPXRequest(
         connection_pool_size=20,
         read_timeout=45.0,
@@ -2375,6 +2546,7 @@ def main():
     app.add_handler(CommandHandler("skill", cmd_plugins))
     app.add_handler(CommandHandler("remote", cmd_remote))
     app.add_handler(CommandHandler("workspace", cmd_workspace))
+    app.add_handler(CommandHandler("update", cmd_update))
     app.add_handler(CommandHandler("update_cli", cmd_update_cli))
     app.add_handler(CommandHandler("users", cmd_users))
     app.add_handler(CommandHandler("commands", cmd_commands))

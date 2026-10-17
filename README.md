@@ -116,6 +116,7 @@ Vous pouvez ensuite lancer le bot à tout moment en double-cliquant sur **`start
 | `/memory` | 🧠 Explorer la mémoire long-terme vectorielle Mem0 (Profil, Préférences, Projets) |
 | `/remember <texte>` | 📌 Mémoriser une information permanente dans Mem0 |
 | `/forget <id>` | 🗑️ Supprimer un souvenir de la mémoire long-terme |
+| `/update` | 🔄 Vérifier et installer en 1 clic les mises à jour GitHub & Antigravity CLI (sans perte de données) |
 | `/status` | 📊 Tableau de bord télémétrique du système hôte (CPU, RAM, Disque, Réseau) |
 | `/users` | 👥 Gérer les utilisateurs et permissions (Administrateurs / Invités) |
 

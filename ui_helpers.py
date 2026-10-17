@@ -556,7 +556,7 @@ def get_settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
             InlineKeyboardButton("🕹️ Commandes (/commands)", callback_data="menu_commands"),
         ],
         [
-            InlineKeyboardButton("⬆️ Maj Antigravity CLI", callback_data="cli_update"),
+            InlineKeyboardButton("🔄 Maj Système & CLI (/update)", callback_data="sys_update:check"),
             InlineKeyboardButton("👥 Utilisateurs", callback_data="auth:refresh"),
         ],
         [
@@ -801,5 +801,90 @@ def get_persona_keyboard(settings: dict) -> InlineKeyboardMarkup:
     ]
     if has_instr:
         rows.append([InlineKeyboardButton("🗑️ Effacer les Instructions Personnalisées", callback_data="persona_clear_instr")])
+    rows.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+    return InlineKeyboardMarkup(rows)
+
+
+def format_update_check_html(info: Dict[str, Any], is_push_alert: bool = False) -> str:
+    if not info.get("ok"):
+        return (
+            "⚠️ <b>Vérification des mises à jour GitHub :</b>\n\n"
+            f"<code>{h(info.get('error', 'Erreur inconnue'))}</code>\n\n"
+            f"• <b>Version locale :</b> <code>v{h(info.get('local_version', '4.1.0'))}</code> (<code>{h(info.get('local_sha', ''))}</code>)\n"
+            f"• <b>Antigravity CLI :</b> <code>{h(info.get('installed_agy', ''))}</code> (requis >= <code>{h(info.get('required_agy', ''))}</code>)"
+        )
+
+    behind = int(info.get("commits_behind", 0))
+    agy_needs = bool(info.get("agy_needs_update", False))
+    local_ver = info.get("local_version", "4.1.0")
+    remote_ver = info.get("remote_version", local_ver)
+    local_sha = info.get("local_sha", "")
+    remote_sha = info.get("remote_sha", "")
+    inst_agy = info.get("installed_agy", "Inconnu")
+    req_agy = info.get("required_agy", "1.3.0")
+    changelog = info.get("changelog", "")
+    commits = info.get("commits", []) or []
+
+    agy_badge = (
+        f"⚠️ Mise à jour requise (installé: <code>{h(inst_agy)}</code> ➔ requis: <code>&gt;= {h(req_agy)}</code>)"
+        if agy_needs
+        else f"✅ Compatible (<code>v{h(inst_agy)}</code> &gt;= <code>v{h(req_agy)}</code>)"
+    )
+
+    if behind == 0 and not agy_needs:
+        return (
+            "✅ <b>Votre système est 100% à jour !</b>\n\n"
+            f"• 🤖 <b>Version du Bot :</b> <code>v{h(local_ver)}</code> (commit <code>{h(local_sha)}</code>)\n"
+            f"• ⚡ <b>Antigravity CLI :</b> {agy_badge}\n"
+            "• 🛡️ <b>Surveillance GitHub :</b> Active en arrière-plan"
+        )
+
+    title = (
+        "🚨 <b>Nouvelle Mise à Jour GitHub Détectée !</b>"
+        if is_push_alert
+        else "🚀 <b>Mise à Jour Disponible !</b>"
+    )
+    lines = [
+        f"{title}\n",
+        f"• 📦 <b>Version :</b> <code>v{h(local_ver)}</code> (<code>{h(local_sha)}</code>) ➔ <b><code>v{h(remote_ver)}</code></b> (<code>{h(remote_sha)}</code>)",
+        f"• ⚡ <b>Antigravity CLI :</b> {agy_badge}",
+    ]
+    if changelog:
+        lines.append(f"• 📝 <b>Notes de version :</b> <i>{h(changelog)}</i>")
+
+    if commits:
+        lines.append(f"\n<b>📋 Nouveaux commits sur GitHub ({behind}) :</b>")
+        for c in commits[:6]:
+            lines.append(f"  ◦ <code>{h(c[:80])}</code>")
+
+    lines.append(
+        "\n🛡️ <i>Vos données personnelles (<code>.env</code>, <code>memory.db</code>, discussions, skills et préférences) "
+        "seront intégralement sauvegardées et conservées, et le bot redémarrera tout seul sans coupure.</i>\n"
+        "\n<b>Voulez-vous mettre à jour le système maintenant ?</b>"
+    )
+    return "\n".join(lines)
+
+
+def get_update_prompt_keyboard(info: Dict[str, Any]) -> InlineKeyboardMarkup:
+    rows = []
+    if info.get("update_available"):
+        remote_sha_full = info.get("remote_sha_full", "")[:12]
+        rows.append([
+            InlineKeyboardButton("✅ Oui, mettre à jour maintenant", callback_data="sys_update:confirm")
+        ])
+        if info.get("changed_files"):
+            rows.append([
+                InlineKeyboardButton("📂 Voir les fichiers modifiés", callback_data="sys_update:files"),
+                InlineKeyboardButton("⏳ Ignorer cette version", callback_data=f"sys_update:dismiss:{remote_sha_full}"),
+            ])
+        else:
+            rows.append([
+                InlineKeyboardButton("⏳ Plus tard", callback_data=f"sys_update:dismiss:{remote_sha_full}")
+            ])
+    else:
+        rows.append([
+            InlineKeyboardButton("🔄 Revérifier sur GitHub", callback_data="sys_update:check"),
+            InlineKeyboardButton("⬆️ Forcer Maj CLI (agy update)", callback_data="cli_update"),
+        ])
     rows.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
     return InlineKeyboardMarkup(rows)
