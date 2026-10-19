@@ -22,6 +22,12 @@ try:
 except ImportError:
     FASTEMBED_AVAILABLE = False
 
+try:
+    from resource_governor import governor
+    IS_LOW_SPEC = bool(governor.low_resource_mode)
+except Exception:
+    IS_LOW_SPEC = False
+
 DB_PATH = str(BASE_DIR / "memory.db")
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
@@ -30,7 +36,9 @@ _embedder_cache = None
 
 def get_embedder():
     global _embedder_cache
-    if not FASTEMBED_AVAILABLE:
+    # On low-spec devices (TV box, ARM SBCs, <=2GB RAM), skip heavy ONNX neural networks
+    # and use instant, lightweight SQLite keyword matching to keep response times under 1 second.
+    if IS_LOW_SPEC or not FASTEMBED_AVAILABLE or os.getenv("DISABLE_EMBEDDINGS", "").strip().lower() in ("1", "true"):
         return None
     if _embedder_cache is None:
         try:

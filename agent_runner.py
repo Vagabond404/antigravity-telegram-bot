@@ -51,7 +51,7 @@ DEFAULT_MODELS_LIST: List[Tuple[str, str]] = [
 ]
 
 _cached_models: List[Tuple[str, str]] = list(DEFAULT_MODELS_LIST)
-_models_fetched_once: bool = False
+_models_fetched_once: bool = True
 
 QUOTA_ERROR_KEYWORDS = [
     "quota",
@@ -152,6 +152,8 @@ def _build_agy_env() -> Dict[str, str]:
     if not IS_WINDOWS:
         # Ensure `agy` under systemd uses the same file-based token store as interactive SSH sessions
         env.setdefault("SSH_CONNECTION", "1")
+        # Force Node.js / agy to resolve IPv4 first to eliminate multi-minute IPv6 timeouts on Linux/Armbian
+        env.setdefault("NODE_OPTIONS", "--dns-result-order=ipv4first")
     return env
 
 
@@ -490,6 +492,13 @@ class AgentRunner:
                         self.has_active_session = True
                         return (response_text, True)
 
+                    if is_quota:
+                        logger.warning(
+                            f"Quota limit reached on model '{current_model}'. Switching immediately to next fallback model..."
+                        )
+                        last_error = response_text
+                        break
+
                     if response_text == "AUTO_RETRY_CONTINUE" and attempt == 0:
                         logger.info(f"Stream hiccup on {current_model}. Continuing session...")
                         self.has_active_session = True
@@ -667,12 +676,14 @@ class AgentRunner:
 
         self.is_running = True
         accumulated_text: List[str] = []
-        current_action = "🧠 Initialisation de l'agent..."
+        stderr_lines: List[str] = []
+        current_action = f"🧠 Analyse en cours ({model or 'agy'})..."
         got_success_result = False
         pending_tool_calls: Dict[str, Dict[str, Any]] = {}
         active_subagents: Dict[str, str] = {}
 
         popen_kwargs: Dict[str, Any] = {
+            "stdin": asyncio.subprocess.DEVNULL,
             "stdout": asyncio.subprocess.PIPE,
             "stderr": asyncio.subprocess.PIPE,
             "cwd": str(ws_path),
@@ -705,12 +716,26 @@ class AgentRunner:
                 finally:
                     await line_queue.put(None)
 
+            async def stderr_reader():
+                try:
+                    while True:
+                        raw_err = await process.stderr.readline()
+                        if not raw_err:
+                            break
+                        decoded = raw_err.decode("utf-8", errors="replace").strip()
+                        if decoded:
+                            stderr_lines.append(decoded)
+                            if len(stderr_lines) > 200:
+                                stderr_lines.pop(0)
+                except Exception as ex:
+                    logger.debug(f"Stderr reader finished or interrupted: {ex}")
+
             async def ui_updater_task():
                 nonlocal ui_dirty
                 while ui_updater_running:
                     try:
-                        await asyncio.sleep(2.0)
-                        if ui_dirty and on_update:
+                        await asyncio.sleep(1.5)
+                        if on_update:
                             full_text = "".join(accumulated_text).strip()
                             await on_update(full_text, current_action)
                             ui_dirty = False
@@ -720,7 +745,15 @@ class AgentRunner:
                         logger.debug(f"UI updater non-fatal error: {ue}")
 
             reader_task = asyncio.create_task(stdout_reader())
+            stderr_task = asyncio.create_task(stderr_reader())
             updater_task = asyncio.create_task(ui_updater_task())
+
+            def stop_stream_tasks():
+                nonlocal ui_updater_running
+                ui_updater_running = False
+                for t in (updater_task, reader_task, stderr_task):
+                    if not t.done():
+                        t.cancel()
 
             if on_update:
                 try:
@@ -735,9 +768,7 @@ class AgentRunner:
                     else:
                         raw_line = await asyncio.wait_for(line_queue.get(), timeout=float(timeout))
                 except asyncio.TimeoutError:
-                    ui_updater_running = False
-                    updater_task.cancel()
-                    reader_task.cancel()
+                    stop_stream_tasks()
                     await self.abort()
                     return (f"⏱️ Délai d'attente dépassé ({timeout}s).", False, False)
 
@@ -841,9 +872,7 @@ class AgentRunner:
                         elif status == "ERROR":
                             err = res.get("error", "")
                             if is_quota_error(err):
-                                ui_updater_running = False
-                                updater_task.cancel()
-                                reader_task.cancel()
+                                stop_stream_tasks()
                                 return (err, False, True)
                             if "subscriber fell behind" in err.lower() or "stalled" in err.lower():
                                 logger.warning(f"Stream stall detected: {err}.")
@@ -851,14 +880,10 @@ class AgentRunner:
                                 if final_text_so_far:
                                     got_success_result = True
                                     break
-                                ui_updater_running = False
-                                updater_task.cancel()
-                                reader_task.cancel()
+                                stop_stream_tasks()
                                 return ("AUTO_RETRY_CONTINUE", False, False)
 
-                            ui_updater_running = False
-                            updater_task.cancel()
-                            reader_task.cancel()
+                            stop_stream_tasks()
                             return (f"Erreur: {err}", False, False)
 
                 except json.JSONDecodeError:
@@ -867,9 +892,7 @@ class AgentRunner:
                         accumulated_text.append(raw_line + "\n")
                         ui_dirty = True
 
-            ui_updater_running = False
-            updater_task.cancel()
-            reader_task.cancel()
+            stop_stream_tasks()
 
             final_text = "".join(accumulated_text).strip()
             if got_success_result or final_text:
@@ -880,8 +903,7 @@ class AgentRunner:
                     pass
                 return (final_text or "✅ Action exécutée avec succès.", True, False)
 
-            stderr_bytes = await process.stderr.read()
-            stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
+            stderr_text = "\n".join(stderr_lines).strip()
             combined_err = stderr_text or final_text or f"Code sortie {process.returncode}"
             if is_quota_error(combined_err):
                 return (combined_err, False, True)
