@@ -731,24 +731,41 @@ async def cmd_experts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     active_count = sum(1 for e in experts.values() if e.get("enabled", True))
     user_lang = get_user_language(uid)
     if user_lang == "fr":
+        empty_hint = (
+            "💡 <i>Aucun sous-agent expert n'est configuré pour le moment.</i>\n\n"
+            "✍️ <i>Pour en ajouter un, demandez simplement à l'agent dans le chat :</i>\n"
+            "• <code>Crée un sous-agent expert en mathématiques</code>\n"
+            "• <code>Crée un sous-agent expert en code Python</code>\n"
+            "• <code>Crée un sous-agent expert en histoire</code>"
+        ) if not experts else (
+            "💡 <i>Cliquez sur un expert ci-dessous pour voir sa persona détaillée ou l'activer/désactiver :</i>\n"
+            "✍️ <i>Pour en créer un nouveau, demandez à l'agent : <code>Crée un sous-agent expert en [matière]</code></i>"
+        )
         text = (
             "🎓 <b>Équipe de Sous-Agents Experts Personnalisés</b>\n\n"
             f"• <b>Experts configurés :</b> {len(experts)}\n"
             f"• <b>Experts actifs :</b> {active_count}\n\n"
-            "<i>L'agent principal peut faire appel à ces experts spécialisés ou adopter leurs compétences "
-            "pour résoudre des questions pointues avec une rigueur absolue (Maths, Code, Langues, Sciences, etc.).</i>\n\n"
-            "💡 <i>Cliquez sur un expert ci-dessous pour voir sa persona détaillée ou l'activer/désactiver :</i>\n"
-            "✍️ <i>Pour en créer un nouveau, demandez simplement à l'agent : <code>Crée un sous-agent expert en histoire</code></i>"
+            "<i>L'agent principal peut faire appel à vos experts spécialisés ou adopter leurs compétences "
+            "pour résoudre vos demandes avec une rigueur absolue.</i>\n\n"
+            f"{empty_hint}"
         )
     else:
+        empty_hint = (
+            "💡 <i>No custom expert subagents configured yet.</i>\n\n"
+            "✍️ <i>To create one, simply ask the agent in chat:</i>\n"
+            "• <code>Create an expert subagent in mathematics</code>\n"
+            "• <code>Create an expert subagent in Python coding</code>"
+        ) if not experts else (
+            "💡 <i>Click on an expert below to inspect their prompt or toggle them active/inactive:</i>\n"
+            "✍️ <i>To create a new one, tell the agent: <code>Create an expert subagent in [domain]</code></i>"
+        )
         text = (
             "🎓 <b>Custom Expert Subagents Team</b>\n\n"
             f"• <b>Configured Experts:</b> {len(experts)}\n"
             f"• <b>Active Experts:</b> {active_count}\n\n"
-            "<i>The main agent can invoke these specialized experts or adopt their persona "
-            "to answer advanced questions with maximum precision (Math, Code, Languages, Sciences, etc.).</i>\n\n"
-            "💡 <i>Click on an expert below to inspect their prompt or toggle them active/inactive:</i>\n"
-            "✍️ <i>To create a new one, simply tell the agent: <code>Create an expert subagent in physics</code></i>"
+            "<i>The main agent can invoke your specialized experts or adopt their persona "
+            "to answer advanced questions with maximum precision.</i>\n\n"
+            f"{empty_hint}"
         )
     kb = get_experts_keyboard(experts)
     if update.callback_query:
