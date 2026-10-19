@@ -438,7 +438,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if chat and chat.type in (ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL):
         # Register group passively and stay completely silent
-        group_mgr.register_or_update_group(
+        g_info, is_new = group_mgr.register_or_update_group(
             chat_id=chat.id,
             title=chat.title or "",
             chat_type=chat.type,
@@ -446,6 +446,22 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             added_by_name=user.first_name if user else "",
             auto_authorize_if_admin=is_admin(uid, user),
         )
+        admin_id = auth_mgr.get_primary_admin_id()
+        if admin_id and is_new:
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=(
+                        f"🏫 <b>Nouveau Groupe Détecté &amp; Enregistré !</b>\n\n"
+                        f"• <b>Titre :</b> {h(chat.title or 'Sans titre')}\n"
+                        f"• <b>ID Telegram :</b> <code>{chat.id}</code>\n"
+                        "• <b>Mode :</b> 🔇 Écoute Seule (Silencieux)\n\n"
+                        "Tapez /groups pour gérer ce groupe.",
+                    ),
+                    parse_mode=PM,
+                )
+            except Exception:
+                pass
         return
 
     first_name = user.first_name or "Ami" if user else "Ami"
@@ -2109,7 +2125,7 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
 
     if not is_private:
         # GROUP / CHANNEL LOGIC: Strict privacy & silence
-        group_mgr.register_or_update_group(
+        g_info, is_new = group_mgr.register_or_update_group(
             chat_id=chat.id,
             title=chat.title or "",
             chat_type=chat.type,
@@ -2117,6 +2133,23 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
             added_by_name=user.first_name or "",
             auto_authorize_if_admin=is_admin(uid, user),
         )
+        if is_new:
+            admin_id = auth_mgr.get_primary_admin_id()
+            if admin_id:
+                try:
+                    await context.bot.send_message(
+                        chat_id=admin_id,
+                        text=(
+                            f"🏫 <b>Nouveau Groupe Détecté &amp; Enregistré !</b>\n\n"
+                            f"• <b>Titre :</b> {h(chat.title or 'Sans titre')}\n"
+                            f"• <b>ID Telegram :</b> <code>{chat.id}</code>\n"
+                            "• <b>Mode :</b> 🔇 Écoute Seule (Silencieux)\n\n"
+                            "Tapez /groups pour gérer ce groupe."
+                        ),
+                        parse_mode=PM,
+                    )
+                except Exception:
+                    pass
 
         # 1. Passive Homework & Course Intelligence
         if group_mgr.can_read(chat.id) and group_mgr.is_school_tracking_enabled(chat.id):
@@ -2214,7 +2247,7 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
             )
             return
 
-        # If forwarded from a teacher/user in private, directly index the lesson/homework
+        # If forwarded in private, treat naturally as user input (never hijack all forwards as homework)
         if origin and prompt:
             sender_name = ""
             if hasattr(origin, "sender_user") and origin.sender_user:
@@ -2222,25 +2255,9 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
             elif hasattr(origin, "sender_user_name"):
                 sender_name = origin.sender_user_name or ""
 
-            detected = school_mgr.analyze_incoming_message(
-                text=prompt,
-                sender_name=sender_name or "Professeur",
-                chat_title="Groupe École (Transféré)",
-                chat_id=0,
-            )
-            if detected:
-                parts = ["📖 <b>Contenu Scolaire Enregistré avec Succès !</b>\n"]
-                if detected.get("lesson"):
-                    les = detected["lesson"]
-                    parts.append(f"• <b>Matière :</b> {h(les.get('subject', 'Général'))}")
-                    parts.append(f"• <b>Résumé du Cours :</b>\n<blockquote>{h(les.get('summary', '')[:250])}</blockquote>\n")
-                if detected.get("homework"):
-                    hw = detected["homework"]
-                    parts.append(f"• 📚 <b>Devoir :</b> [{h(hw.get('subject', ''))}] Pour <code>{h(hw.get('due_date_label', 'bientôt'))}</code>")
-                    parts.append(f"• <b>Détails :</b>\n<blockquote>{h(hw.get('description', '')[:250])}</blockquote>\n")
-                parts.append("💡 <i>Tapez /homework pour voir vos devoirs ou demandez-moi de vous expliquer ce cours !</i>")
-                await update.message.reply_text("\n".join(parts), parse_mode=PM)
-                return
+            fwd_header = f"📨 <i>Message transféré de <b>{h(sender_name or 'un tiers')}</b> :</i>\n\n"
+            await _process_user_turn(update, context, prompt, header=fwd_header)
+            return
 
         if prompt.startswith("/"):
             parts = prompt.split(maxsplit=1)
