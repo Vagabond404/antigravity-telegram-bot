@@ -883,6 +883,31 @@ async def cmd_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin_access(update):
         return
 
+    args = context.args or []
+    if args and args[0].lower() == "add" and len(args) > 1:
+        try:
+            target_id = int(args[1])
+            title = " ".join(args[2:]).strip() if len(args) > 2 else f"Groupe {target_id}"
+            g_info, _ = group_mgr.register_or_update_group(
+                chat_id=target_id,
+                title=title,
+                chat_type=ChatType.SUPERGROUP,
+                added_by_id=update.effective_user.id,
+                added_by_name=update.effective_user.first_name or "",
+                auto_authorize_if_admin=True,
+            )
+            await update.message.reply_text(
+                f"✅ <b>Groupe « {h(title)} » (<code>{target_id}</code>) enregistré !</b>\n\n"
+                "• <b>Mode Actuel :</b> 🔇 <b>Écoute Seule (Silencieux)</b>\n"
+                "• <b>Suivi Scolaire :</b> ✅ Activé",
+                reply_markup=get_group_detail_keyboard(target_id, g_info),
+                parse_mode=PM,
+            )
+            return
+        except ValueError:
+            await update.message.reply_text("❌ L'ID de groupe doit être un nombre (ex: <code>-1001234567890</code>).", parse_mode=PM)
+            return
+
     groups = group_mgr.list_groups()
     total = len(groups)
     active = sum(1 for g in groups.values() if g.get("mode") == MODE_ACTIVE and g.get("status") != "left")
@@ -896,7 +921,8 @@ async def cmd_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• 💬 <b>Mode Interactif (@mentions) :</b> <code>{active}</code>\n"
         f"• 📚 <b>Suivi Scolaire & Devoirs :</b> <code>{school}</code>\n\n"
         "🛡️ <i>En mode Écoute Seule (par défaut), le bot analyse les devoirs et leçons sans JAMAIS envoyer "
-        "le moindre message dans le groupe scolaire. Cliquez sur un groupe ci-dessous pour modifier ses règles ou le faire quitter :</i>"
+        "le moindre message dans le groupe scolaire. Cliquez sur un groupe ci-dessous pour modifier ses règles ou le faire quitter :</i>\n\n"
+        "💡 <i>Astuce : Transférez n'importe quel message du groupe ici en privé pour l'enregistrer instantanément !</i>"
     )
     await update.message.reply_text(
         text,
@@ -2151,6 +2177,43 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
     # PRIVATE CHAT LOGIC
     if is_admin(uid, user):
         if await _handle_pending_admin_input(update, context, prompt):
+            return
+
+        # Check if user forwarded a message from a group/channel to register it
+        fwd_chat = None
+        if update.message.forward_from_chat:
+            fwd_chat = update.message.forward_from_chat
+        elif hasattr(update.message, "forward_origin") and update.message.forward_origin:
+            origin = update.message.forward_origin
+            fwd_chat = getattr(origin, "chat", None) or getattr(origin, "sender_chat", None)
+
+        if fwd_chat and fwd_chat.type in (ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL):
+            g_info, is_new = group_mgr.register_or_update_group(
+                chat_id=fwd_chat.id,
+                title=fwd_chat.title or f"Groupe {fwd_chat.id}",
+                chat_type=fwd_chat.type,
+                added_by_id=uid,
+                added_by_name=user.first_name or "",
+                auto_authorize_if_admin=True,
+            )
+            if prompt and group_mgr.is_school_tracking_enabled(fwd_chat.id):
+                school_mgr.analyze_incoming_message(
+                    text=prompt,
+                    sender_name="Message Transféré",
+                    chat_title=fwd_chat.title or "Groupe",
+                    chat_id=fwd_chat.id,
+                )
+
+            await update.message.reply_text(
+                "🏫 <b>Groupe Détecté &amp; Enregistré avec Succès !</b>\n\n"
+                f"• <b>Titre :</b> {h(fwd_chat.title or 'Sans titre')}\n"
+                f"• <b>ID Telegram :</b> <code>{fwd_chat.id}</code>\n"
+                f"• <b>Mode Actuel :</b> 🔇 <b>Écoute Seule (100% Silencieux)</b>\n"
+                f"• <b>Suivi Scolaire &amp; Devoirs :</b> ✅ Activé\n\n"
+                "🛡️ <i>Le bot surveille désormais ce groupe en toute discrétion sans jamais y écrire.</i>",
+                reply_markup=get_group_detail_keyboard(fwd_chat.id, g_info),
+                parse_mode=PM,
+            )
             return
 
         if prompt.startswith("/"):
