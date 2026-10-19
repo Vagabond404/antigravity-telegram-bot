@@ -29,6 +29,8 @@ from config import (
     record_conversation,
 )
 from memory_manager import get_relevant_context, auto_extract_and_store_facts
+from school_manager import school_mgr
+from resource_governor import governor
 
 logger = logging.getLogger("agent_runner")
 
@@ -435,136 +437,145 @@ class AgentRunner:
         else:
             candidate_models = [preferred_model] + [m for m in model_ids if m != preferred_model]
 
+        governor.start_turn()
         try:
-            auto_extract_and_store_facts(prompt)
-        except Exception as e:
-            logger.debug(f"Auto memory extraction skipped: {e}")
+            try:
+                auto_extract_and_store_facts(prompt)
+            except Exception as e:
+                logger.debug(f"Auto memory extraction skipped: {e}")
 
-        memory_ctx = get_relevant_context(prompt)
-        system_prompt = build_system_prompt(settings)
+            memory_ctx = get_relevant_context(prompt)
+            school_ctx = school_mgr.get_school_context_for_agent(prompt)
+            system_prompt = build_system_prompt(settings)
 
-        if self.has_active_session:
-            prompt_parts = []
-            if memory_ctx:
-                prompt_parts.append(memory_ctx.strip())
-            prompt_parts.append(f"[DEMANDE DE L'UTILISATEUR]\n{prompt}")
-            enhanced_prompt = "\n\n".join(prompt_parts)
-        else:
-            prompt_parts = [system_prompt]
-            if memory_ctx:
-                prompt_parts.append(memory_ctx.strip())
-            prompt_parts.append(f"[DEMANDE DE L'UTILISATEUR]\n{prompt}")
-            enhanced_prompt = "\n\n".join(prompt_parts)
+            if self.has_active_session:
+                prompt_parts = []
+                if memory_ctx:
+                    prompt_parts.append(memory_ctx.strip())
+                if school_ctx:
+                    prompt_parts.append(school_ctx.strip())
+                prompt_parts.append(f"[DEMANDE DE L'UTILISATEUR]\n{prompt}")
+                enhanced_prompt = "\n\n".join(prompt_parts)
+            else:
+                prompt_parts = [system_prompt]
+                if memory_ctx:
+                    prompt_parts.append(memory_ctx.strip())
+                if school_ctx:
+                    prompt_parts.append(school_ctx.strip())
+                prompt_parts.append(f"[DEMANDE DE L'UTILISATEUR]\n{prompt}")
+                enhanced_prompt = "\n\n".join(prompt_parts)
 
-        last_error = ""
+            last_error = ""
 
-        for model_idx, current_model in enumerate(candidate_models[:5]):
-            if model_idx > 0 and on_model_fallback:
-                try:
-                    await on_model_fallback(candidate_models[model_idx - 1], current_model)
-                except Exception:
-                    pass
+            for model_idx, current_model in enumerate(candidate_models[:5]):
+                if model_idx > 0 and on_model_fallback:
+                    try:
+                        await on_model_fallback(candidate_models[model_idx - 1], current_model)
+                    except Exception:
+                        pass
 
-            for attempt in range(2):
-                response_text, is_success, is_quota = await self._execute_model_stream(
-                    bin_path=bin_path,
-                    prompt=enhanced_prompt,
-                    raw_user_prompt=prompt,
-                    model=current_model,
-                    settings=settings,
-                    on_update=on_update,
-                    on_tool_call=on_tool_call,
-                    on_tool_result=on_tool_result,
-                )
-
-                if is_success:
-                    self.has_active_session = True
-                    return (response_text, True)
-
-                if response_text == "AUTO_RETRY_CONTINUE" and attempt == 0:
-                    logger.info(f"Stream hiccup on {current_model}. Continuing session...")
-                    self.has_active_session = True
-                    await asyncio.sleep(1.0)
-                    continue
-
-                # If --model was rejected (e.g. account has different model list or is not authenticated yet),
-                # retry immediately without `--model` so `agy` uses the account's default model or reports auth status.
-                err_lower = response_text.lower()
-                if current_model and (
-                    "invalid model selection" in err_lower
-                    or "not recognized as a known model" in err_lower
-                ):
-                    logger.warning(
-                        f"Model '{current_model}' rejected by CLI ({response_text[:120]}). "
-                        "Retrying with CLI default model (no --model flag)..."
-                    )
-                    fallback_text, fb_ok, fb_quota = await self._execute_model_stream(
+                for attempt in range(2):
+                    response_text, is_success, is_quota = await self._execute_model_stream(
                         bin_path=bin_path,
                         prompt=enhanced_prompt,
                         raw_user_prompt=prompt,
-                        model="",
+                        model=current_model,
                         settings=settings,
                         on_update=on_update,
                         on_tool_call=on_tool_call,
                         on_tool_result=on_tool_result,
                     )
-                    if fb_ok:
+
+                    if is_success:
                         self.has_active_session = True
-                        return (fallback_text, True)
-                    response_text = fallback_text
+                        return (response_text, True)
+
+                    if response_text == "AUTO_RETRY_CONTINUE" and attempt == 0:
+                        logger.info(f"Stream hiccup on {current_model}. Continuing session...")
+                        self.has_active_session = True
+                        await asyncio.sleep(1.0)
+                        continue
+
+                    # If --model was rejected (e.g. account has different model list or is not authenticated yet),
+                    # retry immediately without `--model` so `agy` uses the account's default model or reports auth status.
                     err_lower = response_text.lower()
+                    if current_model and (
+                        "invalid model selection" in err_lower
+                        or "not recognized as a known model" in err_lower
+                    ):
+                        logger.warning(
+                            f"Model '{current_model}' rejected by CLI ({response_text[:120]}). "
+                            "Retrying with CLI default model (no --model flag)..."
+                        )
+                        fallback_text, fb_ok, fb_quota = await self._execute_model_stream(
+                            bin_path=bin_path,
+                            prompt=enhanced_prompt,
+                            raw_user_prompt=prompt,
+                            model="",
+                            settings=settings,
+                            on_update=on_update,
+                            on_tool_call=on_tool_call,
+                            on_tool_result=on_tool_result,
+                        )
+                        if fb_ok:
+                            self.has_active_session = True
+                            return (fallback_text, True)
+                        response_text = fallback_text
+                        err_lower = response_text.lower()
 
-                if (
-                    "authentication required" in err_lower
-                    or "not authenticated" in err_lower
-                    or "no model configuration is available for this account" in err_lower
-                    or "not recognized as a known model" in err_lower
-                ):
-                    auth_help = (
-                        "🔐 <b>Authentification Google Antigravity CLI requise sur le serveur !</b>\n\n"
-                        "Le binaire <code>agy</code> n'est pas encore connecté à votre compte Google (ou aucun modèle n'est rattaché à la session).\n\n"
-                        "👉 <b>Comment vous connecter en 30 secondes (en SSH sur votre serveur) :</b>\n"
-                        "1️⃣ Tapez la commande : <code>agy</code>\n"
-                        "2️⃣ Ouvrez le lien Google affiché dans votre navigateur et connectez-vous.\n"
-                        "3️⃣ Si votre navigateur redirige vers une page <code>http://localhost:...</code> inaccessible, "
-                        "<b>copiez l'URL complète</b> depuis la barre d'adresse du navigateur et <b>collez-la dans le terminal SSH</b>.\n"
-                        "4️⃣ Une fois l'interface <code>agy</code> ouverte, quittez avec <code>Ctrl+C</code> puis tapez :\n"
-                        "<code>systemctl restart antigravity-bot</code>"
-                    )
-                    return (auth_help, False)
+                    if (
+                        "authentication required" in err_lower
+                        or "not authenticated" in err_lower
+                        or "no model configuration is available for this account" in err_lower
+                        or "not recognized as a known model" in err_lower
+                    ):
+                        auth_help = (
+                            "🔐 <b>Authentification Google Antigravity CLI requise sur le serveur !</b>\n\n"
+                            "Le binaire <code>agy</code> n'est pas encore connecté à votre compte Google (ou aucun modèle n'est rattaché à la session).\n\n"
+                            "👉 <b>Comment vous connecter en 30 secondes (en SSH sur votre serveur) :</b>\n"
+                            "1️⃣ Tapez la commande : <code>agy</code>\n"
+                            "2️⃣ Ouvrez le lien Google affiché dans votre navigateur et connectez-vous.\n"
+                            "3️⃣ Si votre navigateur redirige vers une page <code>http://localhost:...</code> inaccessible, "
+                            "<b>copiez l'URL complète</b> depuis la barre d'adresse du navigateur et <b>collez-la dans le terminal SSH</b>.\n"
+                            "4️⃣ Une fois l'interface <code>agy</code> ouverte, quittez avec <code>Ctrl+C</code> puis tapez :\n"
+                            "<code>systemctl restart antigravity-bot</code>"
+                        )
+                        return (auth_help, False)
 
-                # Auto-recovery if --conversation / --continue failed due to corrupted/expired session
-                err_upper = response_text.upper()
-                if self.has_active_session and (
-                    "INVALID_ARGUMENT" in err_upper
-                    or "NOT_FOUND" in err_upper
-                    or "400" in err_upper
-                    or "CONVERSATION" in err_upper
-                    or "SESSION" in err_upper
-                ):
-                    logger.warning(f"Session recovery triggered ({response_text[:120]}). Resetting session...")
-                    self.reset_session()
-                    prompt_parts = [system_prompt]
-                    if memory_ctx:
-                        prompt_parts.append(memory_ctx.strip())
-                    prompt_parts.append(f"[DEMANDE DE L'UTILISATEUR]\n{prompt}")
-                    enhanced_prompt = "\n\n".join(prompt_parts)
-                    continue
+                    # Auto-recovery if --conversation / --continue failed due to corrupted/expired session
+                    err_upper = response_text.upper()
+                    if self.has_active_session and (
+                        "INVALID_ARGUMENT" in err_upper
+                        or "NOT_FOUND" in err_upper
+                        or "400" in err_upper
+                        or "CONVERSATION" in err_upper
+                        or "SESSION" in err_upper
+                    ):
+                        logger.warning(f"Session recovery triggered ({response_text[:120]}). Resetting session...")
+                        self.reset_session()
+                        prompt_parts = [system_prompt]
+                        if memory_ctx:
+                            prompt_parts.append(memory_ctx.strip())
+                        prompt_parts.append(f"[DEMANDE DE L'UTILISATEUR]\n{prompt}")
+                        enhanced_prompt = "\n\n".join(prompt_parts)
+                        continue
 
-                break
+                    break
 
-            last_error = response_text
-            if not is_quota:
-                return (response_text, False)
+                last_error = response_text
+                if not is_quota:
+                    return (response_text, False)
 
-            logger.warning(f"Quota reached for model {current_model}. Attempting fallback...")
+                logger.warning(f"Quota reached for model {current_model}. Attempting fallback...")
 
-        return (
-            "💳 <b>Crédits / Quota temporairement atteints</b>\n\n"
-            "Tous les modèles testés ont atteint leur limite de requêtes.\n"
-            f"<pre>{last_error[:500]}</pre>",
-            False,
-        )
+            return (
+                "💳 <b>Crédits / Quota temporairement atteints</b>\n\n"
+                "Tous les modèles testés ont atteint leur limite de requêtes.\n"
+                f"<pre>{last_error[:500]}</pre>",
+                False,
+            )
+        finally:
+            governor.end_turn()
 
     async def _execute_model_stream(
         self,

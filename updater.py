@@ -37,7 +37,6 @@ UPDATE_STATE_FILE = TEMP_DIR / "update_state.json"
 PENDING_UPDATE_ACK_FILE = TEMP_DIR / "pending_update_ack.json"
 BACKUP_DIR = TEMP_DIR / "user_data_backup"
 
-# User data files that must NEVER be lost during an update
 PROTECTED_USER_FILES = [
     ".env",
     "settings.json",
@@ -46,6 +45,8 @@ PROTECTED_USER_FILES = [
     "conversations.json",
     "pending_approvals.json",
     "incidents_history.json",
+    "groups.json",
+    "school_data.json",
 ]
 
 

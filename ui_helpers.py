@@ -556,6 +556,10 @@ def get_settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
             InlineKeyboardButton("🕹️ Commandes (/commands)", callback_data="menu_commands"),
         ],
         [
+            InlineKeyboardButton("🏫 Groupes & École (/groups)", callback_data="menu_groups"),
+            InlineKeyboardButton("📚 Devoirs (/homework)", callback_data="menu_homework"),
+        ],
+        [
             InlineKeyboardButton("🔄 Maj Système & CLI (/update)", callback_data="sys_update:check"),
             InlineKeyboardButton("👥 Utilisateurs", callback_data="auth:refresh"),
         ],
@@ -887,4 +891,94 @@ def get_update_prompt_keyboard(info: Dict[str, Any]) -> InlineKeyboardMarkup:
             InlineKeyboardButton("⬆️ Forcer Maj CLI (agy update)", callback_data="cli_update"),
         ])
     rows.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+    return InlineKeyboardMarkup(rows)
+
+
+def get_groups_dashboard_keyboard(groups: Dict[str, Any]) -> InlineKeyboardMarkup:
+    rows = []
+    for s_id, g in groups.items():
+        title = g.get("title", f"Groupe {s_id}")[:20]
+        mode = g.get("mode", "passive")
+        mode_icon = "🔇" if mode == "passive" else ("💬" if mode == "active" else "⛔")
+        auth_icon = "✅" if g.get("is_authorized") else "⏳"
+        status = g.get("status", "active")
+        status_suffix = " (quitté)" if status == "left" else ""
+        btn_text = f"{auth_icon} {mode_icon} {title}{status_suffix}"
+        rows.append([InlineKeyboardButton(btn_text, callback_data=f"grp:view:{s_id}")])
+
+    rows.append([
+        InlineKeyboardButton("🔄 Actualiser", callback_data="menu_groups"),
+        InlineKeyboardButton("⬅️ Paramètres", callback_data="menu_main"),
+    ])
+    rows.append([InlineKeyboardButton("❌ Fermer", callback_data="close_menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+def get_group_detail_keyboard(chat_id: int, g: Dict[str, Any]) -> InlineKeyboardMarkup:
+    s_id = str(chat_id)
+    mode = g.get("mode", "passive")
+    is_auth = g.get("is_authorized", False)
+    school_on = g.get("school_tracking", True)
+    status = g.get("status", "active")
+
+    rows = []
+    # Authorization toggle
+    if not is_auth:
+        rows.append([InlineKeyboardButton("✅ Autoriser ce Groupe", callback_data=f"grp:auth:{s_id}:1")])
+    else:
+        rows.append([InlineKeyboardButton("⛔ Révoquer / Bloquer", callback_data=f"grp:auth:{s_id}:0")])
+
+    # Mode toggle
+    if mode == "passive":
+        rows.append([InlineKeyboardButton("💬 Passer en Mode Interactif (@mentions)", callback_data=f"grp:mode:{s_id}:active")])
+    elif mode == "active":
+        rows.append([InlineKeyboardButton("🔇 Passer en Mode Écoute Seule (Silencieux)", callback_data=f"grp:mode:{s_id}:passive")])
+    else:
+        rows.append([InlineKeyboardButton("🔇 Réactiver en Écoute Seule", callback_data=f"grp:mode:{s_id}:passive")])
+
+    # School tracking toggle
+    sch_label = "📚 Suivi Scolaire & Devoirs : ACTIF ✅" if school_on else "📚 Suivi Scolaire : DÉSACTIVÉ ❌"
+    rows.append([InlineKeyboardButton(sch_label, callback_data=f"grp:school:{s_id}")])
+
+    # Leave group action
+    if status != "left":
+        rows.append([InlineKeyboardButton("🚪 Faire Quitter le Bot du Groupe", callback_data=f"grp:leave:{s_id}")])
+    else:
+        rows.append([InlineKeyboardButton("🗑️ Supprimer de la liste", callback_data=f"grp:del:{s_id}")])
+
+    rows.append([InlineKeyboardButton("⬅️ Retour aux Groupes", callback_data="menu_groups")])
+    return InlineKeyboardMarkup(rows)
+
+
+def get_new_group_alert_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    s_id = str(chat_id)
+    rows = [
+        [
+            InlineKeyboardButton("🔇 Écoute Seule (Devoirs / Veille)", callback_data=f"grp:quick:{s_id}:passive"),
+        ],
+        [
+            InlineKeyboardButton("💬 Interactif (Répondre aux @tags)", callback_data=f"grp:quick:{s_id}:active"),
+        ],
+        [
+            InlineKeyboardButton("⛔ Ignorer / Bloquer", callback_data=f"grp:quick:{s_id}:disabled"),
+            InlineKeyboardButton("🚪 Quitter Immédiatement", callback_data=f"grp:quick:{s_id}:leave"),
+        ],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def get_homework_keyboard(homework_list: List[Dict[str, Any]]) -> InlineKeyboardMarkup:
+    rows = []
+    for h in homework_list[:6]:
+        hw_id = h.get("id", "")
+        subj = h.get("subject", "Devoir")[:15]
+        due = h.get("due_date_label") or h.get("due_date", "")
+        btn_text = f"✅ Marquer fait : {subj} ({due})"
+        rows.append([InlineKeyboardButton(btn_text, callback_data=f"hw:done:{hw_id}")])
+
+    rows.append([
+        InlineKeyboardButton("🔄 Actualiser", callback_data="menu_homework"),
+        InlineKeyboardButton("⬅️ Paramètres", callback_data="menu_main"),
+    ])
+    rows.append([InlineKeyboardButton("❌ Fermer", callback_data="close_menu")])
     return InlineKeyboardMarkup(rows)

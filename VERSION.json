@@ -1,7 +1,7 @@
 {
-  "bot_version": "4.1.0",
+  "bot_version": "4.2.0",
   "min_agy_version": "1.3.0",
   "repository": "https://github.com/Vagabond404/antigravity-telegram-bot.git",
   "branch": "main",
-  "changelog": "Full GitHub & Antigravity CLI auto-update system with detached hot-restart, built-in telegram-bot-mastery AI skill, one-click MCP server catalog, and cross-chat vector memory."
+  "changelog": "Stealth Group Privacy & Silent Listening, School & Homework Intelligence (/groups, /homework, daily evening reminders), and Hardware Resource Governor for Low-Spec / TV-Box devices."
 }

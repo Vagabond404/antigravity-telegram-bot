@@ -16,16 +16,19 @@ import re
 import sys
 import json
 import html
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 from telegram import Update, constants, InputFile, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ChatType
 from telegram.error import RetryAfter, TimedOut, NetworkError, BadRequest
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
+    ChatMemberHandler,
     ContextTypes,
     filters,
 )
@@ -68,6 +71,9 @@ from auth_manager import (
     ROLE_BLOCKED,
     ROLES_DESCRIPTION,
 )
+from group_manager import group_mgr, MODE_PASSIVE, MODE_ACTIVE, MODE_DISABLED
+from school_manager import school_mgr
+from resource_governor import governor
 from ui_helpers import (
     md_to_html,
     smart_split_html,
@@ -92,6 +98,10 @@ from ui_helpers import (
     get_persona_keyboard,
     format_update_check_html,
     get_update_prompt_keyboard,
+    get_groups_dashboard_keyboard,
+    get_group_detail_keyboard,
+    get_new_group_alert_keyboard,
+    get_homework_keyboard,
 )
 from memory_manager import (
     add_or_update_memory,
@@ -242,6 +252,29 @@ def is_admin(user_id: int, user_obj=None) -> bool:
     return auth_mgr.is_admin(user_id)
 
 
+def is_private_chat(update: Update) -> bool:
+    chat = update.effective_chat
+    return bool(chat and chat.type == ChatType.PRIVATE)
+
+
+async def check_admin_access(update: Update, send_error_in_private: bool = True) -> bool:
+    """
+    Check if the user is administrator.
+    If in a group, ALWAYS return False silently without spamming the group chat.
+    If in private, optionally send an error notice.
+    """
+    user = update.effective_user
+    uid = user.id if user else 0
+    if is_admin(uid, user):
+        return True
+    if not is_private_chat(update):
+        # Strict silence in groups! Never leak bot permissions in a shared group chat!
+        return False
+    if send_error_in_private and update.effective_message:
+        await update.effective_message.reply_text("⛔ Commande réservée à l'administrateur.")
+    return False
+
+
 def _get_users_dashboard_keyboard() -> InlineKeyboardMarkup:
     users = auth_mgr.list_all_users()
     rows = []
@@ -382,6 +415,7 @@ async def post_init(application) -> None:
     if not IS_WINDOWS:
         asyncio.create_task(auto_heal_background_worker())
     asyncio.create_task(auto_update_watcher_worker(application))
+    asyncio.create_task(daily_homework_reminder_worker(application))
 
 
 async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -398,9 +432,23 @@ async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYP
 # =============================================================================
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
     user = update.effective_user
-    uid = user.id
-    first_name = user.first_name or "Ami"
+    uid = user.id if user else 0
+
+    if chat and chat.type in (ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL):
+        # Register group passively and stay completely silent
+        group_mgr.register_or_update_group(
+            chat_id=chat.id,
+            title=chat.title or "",
+            chat_type=chat.type,
+            added_by_id=uid,
+            added_by_name=user.first_name if user else "",
+            auto_authorize_if_admin=is_admin(uid, user),
+        )
+        return
+
+    first_name = user.first_name or "Ami" if user else "Ami"
     just_claimed = ensure_first_admin_if_needed(user)
 
     if is_admin(uid):
@@ -420,7 +468,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• 🤝 <b>Multi-Agents & Sous-Agents :</b> Orchestration parallèle de sous-agents autonomes (<code>/agents</code>, <code>/teamwork</code>).\n"
             "• 📤 <b>Multimédia Bidirectionnel :</b> Envoyez et recevez images, vidéos, audios, notes vocales, PDF et archives sans limite.\n"
             "• 🔌 <b>Écosystème CLI Complet :</b> Gérez vos serveurs <code>/mcp</code>, <code>/plugins</code>, <code>/remote</code> et <code>/sessions</code> en un clic.\n"
-            "• 🧠 <b>Mémoire Long-Terme Inter-Conversations :</b> Mémoire vectorielle locale Mem0 (<code>/memory</code>, <code>/remember</code>, <code>/forget</code>).\n\n"
+            "• 🧠 <b>Mémoire Long-Terme Inter-Conversations :</b> Mémoire vectorielle locale Mem0 (<code>/memory</code>, <code>/remember</code>, <code>/forget</code>).\n"
+            "• 🏫 <b>Veille Scolaire & Groupes :</b> Mode écoute silencieuse, détection des devoirs & rappels quotidiens (<code>/groups</code>, <code>/homework</code>).\n\n"
             "💡 <i>Envoyez un message, une photo, un fichier ou tapez <code>/settings</code> pour tout personnaliser !</i>"
         )
         await update.message.reply_text(
@@ -441,8 +490,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id, update.effective_user):
-        await update.message.reply_text("⛔ Accès réservé à l'administrateur.")
+    if not await check_admin_access(update):
         return
 
     help_text = (
@@ -463,6 +511,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• <code>/sessions</code> : Reprendre une conversation précédente ou en créer une\n"
         "• <code>/clear</code> : Réinitialiser la session en cours\n"
         "• <code>/abort</code> : Stopper immédiatement l'exécution en cours\n\n"
+        "<b>🏫 Groupes & Suivi Scolaire :</b>\n"
+        "• <code>/groups</code> : Gérer les groupes, permissions & mode écoute passive\n"
+        "• <code>/homework</code> (ou <code>/devoirs</code>) : Consulter et valider les devoirs détectés\n\n"
         "<b>🚀 Workflows Spéciaux & Multi-Agents :</b>\n"
         "• <code>/goal &lt;objectif&gt;</code> : Exécution autonome longue durée jusqu'à 100%\n"
         "• <code>/teamwork &lt;mission&gt;</code> : Déployer une équipe de sous-agents en parallèle\n"
@@ -477,15 +528,14 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id, update.effective_user):
-        await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
+    if not await check_admin_access(update):
         return
 
-    import psutil
-    try:
-        mem_mb = psutil.Process().memory_info().rss / (1024 * 1024)
-    except Exception:
-        mem_mb = 0.0
+    gov_metrics = governor.get_metrics_summary()
+    gov_badge = gov_metrics.get("status_badge", "🟢 Optimal")
+    cpu_str = f"{gov_metrics.get('cpu_percent', 0.0):.1f}% ({gov_metrics.get('cpu_count', 1)} cœurs)"
+    ram_str = f"{gov_metrics.get('used_ram_mb', 0.0) / 1024:.1f} / {gov_metrics.get('total_ram_mb', 0.0) / 1024:.1f} Go ({gov_metrics.get('avail_ram_mb', 0.0):.0f} Mo libres)"
+    low_res_badge = " (Mode Éco TV-Box 🛡️)" if gov_metrics.get("low_resource_mode") else ""
 
     agy_bin = find_agy_binary()
     agy_status = f"✅ <code>{h(agy_bin)}</code>" if agy_bin else "❌ Introuvable"
@@ -508,10 +558,12 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• <b>Multi-Agents :</b> {'🟢 Activé' if settings.get('multi_agent', True) else '🔴 Désactivé'}\n"
         f"• <b>Sandbox :</b> {'🔒 Activé' if settings.get('sandbox') else '🔓 Désactivé'}\n"
         f"• <b>Timeout :</b> <code>{t_str}</code>\n"
+        f"• <b>Gouverneur Matériel :</b> {gov_badge}{low_res_badge}\n"
+        f"• <b>CPU Hôte :</b> <code>{cpu_str}</code>\n"
+        f"• <b>RAM Hôte :</b> <code>{ram_str}</code>\n"
         f"• <b>Session :</b> {sess_str}\n"
         f"• <b>Tokens session :</b> <code>{runner.session_total_tokens:,}</code> ({runner.session_turns} tour(s))\n"
-        f"• <b>Workspace :</b> <code>{h(settings.get('workspace_dir', ''))}</code>\n"
-        f"• <b>RAM Bot :</b> <code>{mem_mb:.1f} Mo</code>\n\n"
+        f"• <b>Workspace :</b> <code>{h(settings.get('workspace_dir', ''))}</code>\n\n"
         f"{sys_report}"
     )
     await update.message.reply_text(st_msg, parse_mode=PM)
@@ -807,8 +859,7 @@ async def cmd_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id, update.effective_user):
-        await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
+    if not await check_admin_access(update):
         return
 
     users = auth_mgr.list_all_users()
@@ -828,9 +879,47 @@ async def cmd_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, reply_markup=_get_users_dashboard_keyboard(), parse_mode=PM)
 
 
+async def cmd_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_admin_access(update):
+        return
+
+    groups = group_mgr.list_groups()
+    total = len(groups)
+    active = sum(1 for g in groups.values() if g.get("mode") == MODE_ACTIVE and g.get("status") != "left")
+    passive = sum(1 for g in groups.values() if g.get("mode") == MODE_PASSIVE and g.get("status") != "left")
+    school = sum(1 for g in groups.values() if g.get("school_tracking", True) and g.get("status") != "left")
+
+    text = (
+        "🏫 <b>Gestion des Groupes & Canaux Telegram</b>\n\n"
+        f"• <b>Groupes enregistrés :</b> <code>{total}</code>\n"
+        f"• 🔇 <b>Mode Écoute Seule (Silencieux) :</b> <code>{passive}</code>\n"
+        f"• 💬 <b>Mode Interactif (@mentions) :</b> <code>{active}</code>\n"
+        f"• 📚 <b>Suivi Scolaire & Devoirs :</b> <code>{school}</code>\n\n"
+        "🛡️ <i>En mode Écoute Seule (par défaut), le bot analyse les devoirs et leçons sans JAMAIS envoyer "
+        "le moindre message dans le groupe scolaire. Cliquez sur un groupe ci-dessous pour modifier ses règles ou le faire quitter :</i>"
+    )
+    await update.message.reply_text(
+        text,
+        reply_markup=get_groups_dashboard_keyboard(groups),
+        parse_mode=PM,
+    )
+
+
+async def cmd_homework(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_admin_access(update):
+        return
+
+    pending = school_mgr.get_pending_homework()
+    text = school_mgr.format_homework_html()
+    await update.message.reply_text(
+        text,
+        reply_markup=get_homework_keyboard(pending),
+        parse_mode=PM,
+    )
+
+
 async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id, update.effective_user):
-        await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
+    if not await check_admin_access(update):
         return
     args = context.args
     if args:
@@ -848,8 +937,7 @@ async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_remember(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id, update.effective_user):
-        await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
+    if not await check_admin_access(update):
         return
     if not context.args:
         await update.message.reply_text("Usage : <code>/remember &lt;information à mémoriser&gt;</code>", parse_mode=PM)
@@ -863,8 +951,7 @@ async def cmd_remember(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_forget(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id, update.effective_user):
-        await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
+    if not await check_admin_access(update):
         return
     if not context.args or not context.args[0].lstrip("#").isdigit():
         await update.message.reply_text("Usage : <code>/forget &lt;ID_souvenir&gt;</code>", parse_mode=PM)
@@ -877,8 +964,7 @@ async def cmd_forget(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id, update.effective_user):
-        await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
+    if not await check_admin_access(update):
         return
     runner.reset_session()
     pending_admin_input.pop(update.effective_user.id, None)
@@ -886,8 +972,7 @@ async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_abort(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id, update.effective_user):
-        await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
+    if not await check_admin_access(update):
         return
     if runner.is_running:
         success = await runner.abort()
@@ -1751,6 +1836,126 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await safe_edit_message(query.message, msg, reply_markup=kb)
         return
 
+    # --- Groups & Channels Management ---
+    if data == "menu_groups":
+        await query.answer()
+        groups = group_mgr.list_groups()
+        total = len(groups)
+        active = sum(1 for g in groups.values() if g.get("mode") == MODE_ACTIVE and g.get("status") != "left")
+        passive = sum(1 for g in groups.values() if g.get("mode") == MODE_PASSIVE and g.get("status") != "left")
+        school = sum(1 for g in groups.values() if g.get("school_tracking", True) and g.get("status") != "left")
+        text = (
+            "🏫 <b>Gestion des Groupes & Canaux Telegram</b>\n\n"
+            f"• <b>Groupes enregistrés :</b> <code>{total}</code>\n"
+            f"• 🔇 <b>Mode Écoute Seule (Silencieux) :</b> <code>{passive}</code>\n"
+            f"• 💬 <b>Mode Interactif (@mentions) :</b> <code>{active}</code>\n"
+            f"• 📚 <b>Suivi Scolaire & Devoirs :</b> <code>{school}</code>\n\n"
+            "🛡️ <i>En mode Écoute Seule (par défaut), le bot analyse les devoirs et leçons sans JAMAIS envoyer "
+            "le moindre message dans le groupe scolaire. Cliquez sur un groupe ci-dessous pour modifier ses règles ou le faire quitter :</i>"
+        )
+        await safe_edit_message(query.message, text, reply_markup=get_groups_dashboard_keyboard(groups))
+        return
+
+    if data.startswith("grp:"):
+        await query.answer()
+        parts = data.split(":")
+        action = parts[1]
+        if action == "view":
+            target_chat_id = int(parts[2])
+            g = group_mgr.get_group(target_chat_id) or {}
+            title = g.get("title", f"Groupe {target_chat_id}")
+            mode = g.get("mode", "passive")
+            is_auth = g.get("is_authorized", False)
+            school_on = g.get("school_tracking", True)
+            status = g.get("status", "active")
+            text = (
+                f"🏫 <b>Fiche Groupe : {h(title)}</b>\n\n"
+                f"• <b>ID Telegram :</b> <code>{target_chat_id}</code>\n"
+                f"• <b>Statut :</b> {'Actif ✅' if status != 'left' else 'Quitté 🚪'}\n"
+                f"• <b>Autorisation :</b> {'Autorisé ✅' if is_auth else 'Non-autorisé ⏳'}\n"
+                f"• <b>Mode de fonctionnement :</b> <code>{mode}</code>\n"
+                f"  ◦ <i>{'Écoute 100% silencieuse (surveillance/devoirs)' if mode == 'passive' else ('Répond uniquement si mentionné (@tag)' if mode == 'active' else 'Désactivé')}</i>\n"
+                f"• <b>Suivi Scolaire & Devoirs :</b> {'Actif 📚' if school_on else 'Désactivé ⚪'}\n"
+                f"• <b>Ajouté par :</b> {h(g.get('added_by_name', 'Inconnu'))} (<code>{g.get('added_by_id', '')}</code>)"
+            )
+            await safe_edit_message(query.message, text, reply_markup=get_group_detail_keyboard(target_chat_id, g))
+        elif action == "auth":
+            target_chat_id = int(parts[2])
+            auth_flag = bool(int(parts[3]))
+            group_mgr.set_authorization(target_chat_id, auth_flag)
+            g = group_mgr.get_group(target_chat_id) or {}
+            await query.answer(f"Groupe {'autorisé ✅' if auth_flag else 'bloqué ⛔'}")
+            await safe_edit_message(query.message, f"Mise à jour du groupe {target_chat_id}...", reply_markup=get_group_detail_keyboard(target_chat_id, g))
+        elif action == "mode":
+            target_chat_id = int(parts[2])
+            new_mode = parts[3]
+            group_mgr.set_mode(target_chat_id, new_mode)
+            g = group_mgr.get_group(target_chat_id) or {}
+            await query.answer(f"Mode défini sur : {new_mode}")
+            await safe_edit_message(query.message, f"Mode mis à jour : {new_mode}", reply_markup=get_group_detail_keyboard(target_chat_id, g))
+        elif action == "school":
+            target_chat_id = int(parts[2])
+            new_val = group_mgr.toggle_school_tracking(target_chat_id)
+            g = group_mgr.get_group(target_chat_id) or {}
+            await query.answer(f"Suivi scolaire : {'Activé ✅' if new_val else 'Désactivé ❌'}")
+            await safe_edit_message(query.message, f"Suivi scolaire : {'Activé ✅' if new_val else 'Désactivé ❌'}", reply_markup=get_group_detail_keyboard(target_chat_id, g))
+        elif action == "leave":
+            target_chat_id = int(parts[2])
+            try:
+                await context.bot.leave_chat(target_chat_id)
+            except Exception as le:
+                logger.warning(f"Could not leave chat {target_chat_id}: {le}")
+            group_mgr.mark_left(target_chat_id)
+            await query.answer("🚪 Le bot a quitté le groupe !")
+            groups = group_mgr.list_groups()
+            await safe_edit_message(query.message, f"🚪 Le bot a quitté le groupe (<code>{target_chat_id}</code>).", reply_markup=get_groups_dashboard_keyboard(groups))
+        elif action == "del":
+            target_chat_id = int(parts[2])
+            group_mgr.remove_group(target_chat_id)
+            await query.answer("Groupe retiré de la liste.")
+            groups = group_mgr.list_groups()
+            await safe_edit_message(query.message, "Groupe retiré de la liste.", reply_markup=get_groups_dashboard_keyboard(groups))
+        elif action == "quick":
+            target_chat_id = int(parts[2])
+            q_mode = parts[3]
+            if q_mode == "leave":
+                try:
+                    await context.bot.leave_chat(target_chat_id)
+                except Exception:
+                    pass
+                group_mgr.mark_left(target_chat_id)
+                await query.answer("🚪 Groupe quitté !")
+                await safe_edit_message(query.message, f"🚪 Le bot a quitté le groupe (<code>{target_chat_id}</code>).")
+            else:
+                group_mgr.set_authorization(target_chat_id, True)
+                group_mgr.set_mode(target_chat_id, q_mode)
+                await query.answer(f"Configuration validée ({q_mode})")
+                await safe_edit_message(query.message, f"✅ Groupe configuré en mode <b>{q_mode}</b>.")
+        return
+
+    # --- School & Homework Menu ---
+    if data == "menu_homework":
+        await query.answer()
+        pending = school_mgr.get_pending_homework()
+        await safe_edit_message(
+            query.message,
+            school_mgr.format_homework_html(),
+            reply_markup=get_homework_keyboard(pending),
+        )
+        return
+
+    if data.startswith("hw:done:"):
+        hw_id = data.split(":", 2)[2]
+        school_mgr.mark_homework_done(hw_id)
+        await query.answer("Devoir marqué comme terminé ! 🎉")
+        pending = school_mgr.get_pending_homework()
+        await safe_edit_message(
+            query.message,
+            school_mgr.format_homework_html(),
+            reply_markup=get_homework_keyboard(pending),
+        )
+        return
+
 
 # =============================================================================
 # Interactive Admin Input Handler (Settings Prompts)
@@ -1864,12 +2069,86 @@ async def _handle_pending_admin_input(update: Update, context: ContextTypes.DEFA
 # =============================================================================
 
 async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
     user = update.effective_user
+    if not user or not update.message:
+        return
+
     uid = user.id
-    prompt = update.message.text.strip() if update.message and update.message.text else ""
+    prompt = update.message.text.strip() if update.message.text else ""
     if not prompt:
         return
 
+    is_private = is_private_chat(update)
+
+    if not is_private:
+        # GROUP / CHANNEL LOGIC: Strict privacy & silence
+        group_mgr.register_or_update_group(
+            chat_id=chat.id,
+            title=chat.title or "",
+            chat_type=chat.type,
+            added_by_id=uid,
+            added_by_name=user.first_name or "",
+            auto_authorize_if_admin=is_admin(uid, user),
+        )
+
+        # 1. Passive Homework & Course Intelligence
+        if group_mgr.can_read(chat.id) and group_mgr.is_school_tracking_enabled(chat.id):
+            detected = school_mgr.analyze_incoming_message(
+                text=prompt,
+                sender_name=user.first_name or "Camarade/Prof",
+                chat_title=chat.title or "Groupe École",
+                chat_id=chat.id,
+            )
+            if detected.get("homework"):
+                admin_id = auth_mgr.get_primary_admin_id()
+                if admin_id:
+                    hw = detected["homework"]
+                    due_lbl = hw.get("due_date_label") or hw.get("due_date")
+                    try:
+                        await context.bot.send_message(
+                            chat_id=admin_id,
+                            text=(
+                                "📚 <b>Nouveau Devoir Détecté dans le Groupe !</b>\n\n"
+                                f"• <b>Matière :</b> {h(hw['subject'])}\n"
+                                f"• <b>Pour :</b> <code>{h(due_lbl)}</code>\n"
+                                f"• <b>Groupe :</b> {h(chat.title or '')}\n"
+                                f"• <b>Par :</b> {h(user.first_name or '')}\n"
+                                f"• <b>Détails :</b>\n<blockquote>{h(hw['description'][:300])}</blockquote>\n\n"
+                                "<i>Le devoir a été ajouté à votre agenda /homework et à la mémoire de l'agent.</i>"
+                            ),
+                            parse_mode=PM,
+                        )
+                    except Exception as ex:
+                        logger.debug(f"Could not alert admin about homework: {ex}")
+
+        # 2. Strict silence check: If mode is PASSIVE or DISABLED, NEVER respond or reject
+        if not group_mgr.can_write(chat.id):
+            return
+
+        # 3. Interactive mode check: only respond if explicitly mentioned or replied to
+        bot_user = await context.bot.get_me()
+        bot_username = bot_user.username
+        is_mentioned = False
+        if bot_username and f"@{bot_username.lower()}" in prompt.lower():
+            is_mentioned = True
+            prompt = re.sub(rf"@{bot_username}\b", "", prompt, flags=re.IGNORECASE).strip()
+        elif update.message.reply_to_message and update.message.reply_to_message.from_user:
+            if update.message.reply_to_message.from_user.id == bot_user.id:
+                is_mentioned = True
+
+        if not is_mentioned:
+            return
+
+        # 4. If mentioned by non-admin: STRICT SILENCE! Never embarrass the user with error messages in public
+        if not is_admin(uid, user):
+            return
+
+        # Mentioned by administrator in active group
+        await _process_user_turn(update, context, prompt)
+        return
+
+    # PRIVATE CHAT LOGIC
     if is_admin(uid, user):
         if await _handle_pending_admin_input(update, context, prompt):
             return
@@ -1882,6 +2161,13 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
             if norm_cmd in command_mgr.list_commands():
                 await dispatch_custom_command(update, context, norm_cmd, cmd_args)
                 return
+
+        # Friendly natural language shortcuts for homework
+        lower_p = prompt.lower()
+        if lower_p in ("mes devoirs", "devoirs", "homework", "les devoirs"):
+            await cmd_homework(update, context)
+            return
+
         await _process_user_turn(update, context, prompt)
         return
 
@@ -1903,9 +2189,18 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id, update.effective_user):
+    chat = update.effective_chat
+    user = update.effective_user
+    uid = user.id if user else 0
+
+    if not is_private_chat(update):
+        # Strict silence in groups unless authorized and mentioned by admin
+        if not group_mgr.can_write(chat.id) or not is_admin(uid, user):
+            return
+    elif not is_admin(uid, user):
         await update.message.reply_text("⛔ L'envoi d'images est réservé à l'administrateur.")
         return
+
     photo = update.message.photo[-1]
     file = await photo.get_file()
     tmp_path = TEMP_DIR / f"photo_{photo.file_unique_id}.jpg"
@@ -1926,9 +2221,17 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id, update.effective_user):
+    chat = update.effective_chat
+    user = update.effective_user
+    uid = user.id if user else 0
+
+    if not is_private_chat(update):
+        if not group_mgr.can_write(chat.id) or not is_admin(uid, user):
+            return
+    elif not is_admin(uid, user):
         await update.message.reply_text("⛔ L'envoi de vidéos est réservé à l'administrateur.")
         return
+
     vid = update.message.video or update.message.animation or update.message.video_note
     if not vid:
         return
@@ -1954,9 +2257,17 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id, update.effective_user):
+    chat = update.effective_chat
+    user = update.effective_user
+    uid = user.id if user else 0
+
+    if not is_private_chat(update):
+        if not group_mgr.can_write(chat.id) or not is_admin(uid, user):
+            return
+    elif not is_admin(uid, user):
         await update.message.reply_text("⛔ L'envoi d'audios est réservé à l'administrateur.")
         return
+
     media = update.message.voice or update.message.audio
     if not media:
         return
@@ -1984,9 +2295,17 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id, update.effective_user):
+    chat = update.effective_chat
+    user = update.effective_user
+    uid = user.id if user else 0
+
+    if not is_private_chat(update):
+        if not group_mgr.can_write(chat.id) or not is_admin(uid, user):
+            return
+    elif not is_admin(uid, user):
         await update.message.reply_text("⛔ L'envoi de documents est réservé à l'administrateur.")
         return
+
     doc = update.message.document
     fname = doc.file_name or f"document_{doc.file_unique_id}"
     safe_name = re.sub(r"[^\w.\- ()]", "_", fname)
@@ -2474,6 +2793,142 @@ async def auto_update_watcher_worker(application):
         await asyncio.sleep(600)
 
 
+async def daily_homework_reminder_worker(application) -> None:
+    """
+    Background worker that checks for homework due tomorrow and sends a friendly reminder
+    to the Administrator once per day (in late afternoon / evening).
+    """
+    logger.info("Démarrage du worker de rappel quotidien des devoirs scolaires...")
+    await asyncio.sleep(45)
+    while True:
+        try:
+            # Respect resource governor so we never overload CPU/RAM
+            await governor.throttle_background_task()
+
+            now = datetime.now()
+            # Run reminder check around 17:00 (5 PM) onwards if not yet sent today
+            if now.hour >= 17 and not school_mgr.has_sent_reminder_today():
+                due_tomorrow = school_mgr.get_homework_due_tomorrow()
+                if due_tomorrow:
+                    admin_id = auth_mgr.get_primary_admin_id()
+                    if admin_id:
+                        lines = [
+                            "🔔 <b>Rappel Devoirs pour Demain !</b>\n",
+                            "Voici les devoirs ou révisions à rendre pour demain :\n",
+                        ]
+                        for idx, h_item in enumerate(due_tomorrow, 1):
+                            subj = h_item.get("subject", "Général")
+                            desc = h_item.get("description", "").replace("<", "&lt;").replace(">", "&gt;")
+                            if len(desc) > 140:
+                                desc = desc[:137] + "..."
+                            lines.append(f"<b>{idx}. [{subj}]</b> : <i>{desc}</i>")
+
+                        lines.append("\n💡 <i>Posez-moi des questions pour réviser (ex: 'fais-moi un résumé du cours') ou tapez /homework.</i>")
+
+                        await application.bot.send_message(
+                            chat_id=admin_id,
+                            text="\n".join(lines),
+                            reply_markup=get_homework_keyboard(due_tomorrow),
+                            parse_mode=PM,
+                        )
+                        school_mgr.mark_reminder_sent_today()
+                        logger.info(f"Daily homework reminder sent to admin ({len(due_tomorrow)} items).")
+        except Exception as e:
+            logger.debug(f"Daily homework reminder worker error: {e}")
+        await asyncio.sleep(1200)  # Check every 20 minutes
+
+
+async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Handle bot joining, leaving, or being promoted/demoted in groups/channels.
+    Enforces strict privacy and safety:
+    - If added by non-admin: automatically leaves the group to prevent unauthorized additions.
+    - If added by admin: registers as PASSIVE (silent) and notifies the admin privately.
+    """
+    result = update.my_chat_member
+    if not result:
+        return
+
+    chat = result.chat
+    new_member = result.new_chat_member
+    old_member = result.old_chat_member
+    actor = result.from_user
+
+    # Only handle group/supergroup/channel
+    if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL):
+        return
+
+    admin_id = auth_mgr.get_primary_admin_id()
+    was_member = old_member.status in ("member", "administrator")
+    is_now_member = new_member.status in ("member", "administrator")
+
+    if not was_member and is_now_member:
+        # Bot was added to a group!
+        is_actor_admin = is_admin(actor.id, actor) if actor else False
+
+        if not is_actor_admin:
+            # Unauthorized user added the bot -> leave immediately!
+            logger.warning(f"Unauthorized addition to group '{chat.title}' by {actor.id if actor else 'unknown'}. Leaving chat.")
+            try:
+                await context.bot.leave_chat(chat.id)
+            except Exception as e:
+                logger.error(f"Failed to leave unauthorized chat {chat.id}: {e}")
+            group_mgr.mark_left(chat.id)
+
+            if admin_id:
+                try:
+                    await context.bot.send_message(
+                        chat_id=admin_id,
+                        text=(
+                            "⚠️ <b>Tentative d'ajout non-autorisé !</b>\n\n"
+                            f"L'utilisateur <b>{h(actor.first_name if actor else 'Inconnu')}</b> "
+                            f"(<code>{actor.id if actor else 0}</code>) a tenté d'ajouter le bot au groupe :\n"
+                            f"• <b>Titre :</b> {h(chat.title or 'Sans titre')}\n"
+                            f"• <b>ID Groupe :</b> <code>{chat.id}</code>\n\n"
+                            "🛡️ <i>Le bot a immédiatement quitté le groupe pour préserver votre vie privée.</i>"
+                        ),
+                        parse_mode=PM,
+                    )
+                except Exception:
+                    pass
+            return
+
+        # Added by Admin: register group in PASSIVE mode
+        group_mgr.register_or_update_group(
+            chat_id=chat.id,
+            title=chat.title or "",
+            chat_type=chat.type,
+            added_by_id=actor.id if actor else 0,
+            added_by_name=actor.first_name if actor else "",
+            auto_authorize_if_admin=True,
+        )
+
+        if admin_id:
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=(
+                        "👋 <b>Nouveau Groupe Détecté !</b>\n\n"
+                        f"Le bot a été ajouté au groupe <b>{h(chat.title or 'Sans titre')}</b>.\n"
+                        f"• <b>ID Groupe :</b> <code>{chat.id}</code>\n"
+                        f"• <b>Mode Actuel :</b> 🔇 <b>Écoute Seule (Silencieux)</b>\n"
+                        f"• <b>Suivi Scolaire & Devoirs :</b> ✅ Activé\n\n"
+                        "🛡️ <i>En mode Écoute Seule, le bot lit les messages pour détecter les devoirs et cours "
+                        "sans JAMAIS envoyer de message ni de notification d'erreur dans le groupe.</i>\n\n"
+                        "Choisissez comment configurer ce groupe :"
+                    ),
+                    reply_markup=get_new_group_alert_keyboard(chat.id),
+                    parse_mode=PM,
+                )
+            except Exception as e:
+                logger.warning(f"Could not send new group alert to admin: {e}")
+
+    elif was_member and not is_now_member:
+        # Bot was removed or kicked
+        group_mgr.mark_left(chat.id)
+        logger.info(f"Bot left or was removed from group {chat.id} ({chat.title}).")
+
+
 async def handle_dynamic_command_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id, update.effective_user):
         await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
@@ -2558,6 +3013,10 @@ def main():
     app.add_handler(CommandHandler("abort", cmd_abort))
     app.add_handler(CommandHandler("services", cmd_services))
     app.add_handler(CommandHandler("autoheal", cmd_autoheal))
+    app.add_handler(CommandHandler("groups", cmd_groups))
+    app.add_handler(CommandHandler("homework", cmd_homework))
+    app.add_handler(CommandHandler("devoirs", cmd_homework))
+    app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.MY_CHAT_MEMBER))
 
     # Pre-register built-in custom commands (/goal, /grill_me, /plan, /boost, /teamwork, etc.)
     for c_name in list(command_mgr.list_commands().keys()):

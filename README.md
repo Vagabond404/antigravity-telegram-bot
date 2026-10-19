@@ -51,10 +51,27 @@ Install and toggle top **Model Context Protocol (MCP)** servers directly during 
 - **Incoming (User ➔ Agent)**: Send text, **photos**, **videos**, **voice notes**, **audio files**, or **documents/archives** (PDF, ZIP, source code). All media is downloaded into `tmp/` and passed into the agent's context.
 - **Outgoing (Agent ➔ User)**: Any file generated or referenced by the agent (images, charts, videos, audio, voice notes, PDFs, ZIPs) is delivered directly to your Telegram chat via `tg_send.py` or automatic end-of-turn detection.
 
-### 🔄 7. Zero-Data-Loss Autonomous Self-Updater (`updater.py` & `VERSION.json`)
+### 🏫 7. Stealth Group Safety & Classroom Intelligence (`/groups`, `/homework`)
+- **Zero-Spam & Stealth Passive Listening**: When added to school, class, or public groups, the bot defaults to **Passive Listening Mode**—it observes silently and **never** sends greeting spam, error messages, or permission denials in the group.
+- **Strict Authorization Control**: Only the Primary Administrator can invite the bot into groups. If an unauthorized user adds the bot to a group, the bot **automatically leaves the group** immediately and notifies the Admin in private chat.
+- **Interactive Control Center (`/groups`)**: View all groups, toggle between `passive` (silent observation), `active` (responds strictly when `@mentioned` by Admin), or `disabled`, toggle school tracking, or force the bot to leave any group with one click.
+- **Automated Homework & Course Extraction**:
+  - Automatically parses messages in school groups to extract homework assignments, academic subjects (Math, Physics, French, History, English, SVT, etc.), teachers, and due dates (`pour demain`, `pour lundi`, etc.).
+  - Homework items are indexed into [`school_data.json`](school_data.json) and stored in the agent's long-term vector memory.
+  - **Proactive Daily Reminders**: Sends a friendly private reminder to the Admin every evening with assignments due tomorrow.
+  - **On-Demand AI Tutoring**: Ask natural questions in private chat (e.g., *"Fais-moi un cours sur ce qu'on a appris aujourd'hui en maths"* or `/homework`), and the agent will use real classroom lessons to generate custom study guides and revision summaries.
+
+### 🛡️ 8. Hardware Resource Governor & Anti-Crash Protection (`resource_governor.py`)
+- **Low-Spec Hardware Detection (TV Boxes, SBCs, Raspberry Pi, 2GB RAM)**: Automatically detects system RAM, CPU cores, and hardware architecture.
+- **Anti-Crash Throttling & Priority Adjustment**:
+  - Sets Unix process priority (`nice +5`) so the system UI never freezes.
+  - Dynamically throttles or pauses background workers (log scanning, auto-update watcher, homework checks) while an AI reasoning turn is actively executing.
+  - Triggers memory garbage collection (`gc.collect()`) before and after every heavy agent turn to prevent Out-Of-Memory (OOM) process termination.
+
+### 🔄 9. Zero-Data-Loss Autonomous Self-Updater (`updater.py` & `VERSION.json`)
 - **Background GitHub Watcher**: Periodically checks `origin/main` on GitHub. When a new commit is pushed, the bot sends an interactive Telegram notification displaying the new version, changelog, commit list, and CLI compatibility status.
 - **1-Click Telegram Approval**: Tap **`✅ Oui, mettre à jour maintenant`** (or run `/update` anytime) to trigger the automated update pipeline:
-  1. **Backs up 100% of user data** (`.env`, `memory.db`, `settings.json`, `users.json`, `conversations.json`, `custom_commands.json`, and skills) before touching any file.
+  1. **Backs up 100% of user data** (`.env`, `memory.db`, `settings.json`, `users.json`, `conversations.json`, `custom_commands.json`, `groups.json`, `school_data.json`, and skills) before touching any file.
   2. **Downloads & applies latest GitHub code** and restores/merges all user data and custom commands.
   3. **Updates Python dependencies** in `.venv`.
   4. **Verifies Antigravity CLI (`agy`) version** against `min_agy_version` in [`VERSION.json`](VERSION.json) and automatically runs `agy update` (or the official installer) if a newer CLI version is required.
@@ -131,6 +148,8 @@ All personal configuration and memory files (`.env`, `users.json`, `settings.jso
 | `/status` | 📊 Host telemetry, CLI binary status, active session ID, and token usage |
 | `/services` | 🩺 Check system health (CPU, RAM, Disk, Uptime) and service status |
 | `/autoheal` | 🤖 Configure autonomous log scanning & AI self-healing for Docker and systemd |
+| `/groups` | 🏫 Manage Telegram groups & channels (toggle passive silent mode, active mode, leave chat) |
+| `/homework` | 📚 View pending homework assignments, due dates, and mark assignments as completed |
 | `/users` | 👥 Role-Based Access Control (Approve/Block users, manage permissions) |
 | `/clear` | 🧹 Reset the active conversation session (long-term memory is preserved) |
 | `/abort` | 🛑 Immediately stop the currently running agent turn |
