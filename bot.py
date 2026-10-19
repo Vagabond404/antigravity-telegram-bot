@@ -2930,6 +2930,21 @@ async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_T
 
 
 async def handle_dynamic_command_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_private_chat(update):
+        # Strict silence in groups! Also passively register group
+        chat = update.effective_chat
+        user = update.effective_user
+        if chat:
+            group_mgr.register_or_update_group(
+                chat_id=chat.id,
+                title=chat.title or "",
+                chat_type=chat.type,
+                added_by_id=user.id if user else 0,
+                added_by_name=user.first_name if user else "",
+                auto_authorize_if_admin=is_admin(user.id if user else 0, user),
+            )
+        return
+
     if not is_admin(update.effective_user.id, update.effective_user):
         await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
         return
