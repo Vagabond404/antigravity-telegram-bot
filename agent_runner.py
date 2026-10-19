@@ -29,7 +29,7 @@ from config import (
     record_conversation,
 )
 from memory_manager import get_relevant_context, auto_extract_and_store_facts
-from school_manager import school_mgr
+from group_manager import group_mgr
 from resource_governor import governor
 
 logger = logging.getLogger("agent_runner")
@@ -445,24 +445,24 @@ class AgentRunner:
                 logger.debug(f"Auto memory extraction skipped: {e}")
 
             memory_ctx = get_relevant_context(prompt)
-            school_ctx = school_mgr.get_school_context_for_agent(prompt)
+            group_ctx = group_mgr.get_groups_context_for_agent(prompt)
             system_prompt = build_system_prompt(settings)
 
             if self.has_active_session:
                 prompt_parts = []
                 if memory_ctx:
                     prompt_parts.append(memory_ctx.strip())
-                if school_ctx:
-                    prompt_parts.append(school_ctx.strip())
-                prompt_parts.append(f"[DEMANDE DE L'UTILISATEUR]\n{prompt}")
+                if group_ctx:
+                    prompt_parts.append(group_ctx.strip())
+                prompt_parts.append(f"[USER PROMPT]\n{prompt}")
                 enhanced_prompt = "\n\n".join(prompt_parts)
             else:
                 prompt_parts = [system_prompt]
                 if memory_ctx:
                     prompt_parts.append(memory_ctx.strip())
-                if school_ctx:
-                    prompt_parts.append(school_ctx.strip())
-                prompt_parts.append(f"[DEMANDE DE L'UTILISATEUR]\n{prompt}")
+                if group_ctx:
+                    prompt_parts.append(group_ctx.strip())
+                prompt_parts.append(f"[USER PROMPT]\n{prompt}")
                 enhanced_prompt = "\n\n".join(prompt_parts)
 
             last_error = ""

@@ -72,7 +72,7 @@ from auth_manager import (
     ROLES_DESCRIPTION,
 )
 from group_manager import group_mgr, MODE_PASSIVE, MODE_ACTIVE, MODE_DISABLED
-from school_manager import school_mgr
+from i18n import t, detect_and_set_language, get_user_language, set_user_language, DEFAULT_LANGUAGE
 from resource_governor import governor
 from ui_helpers import (
     md_to_html,
@@ -101,7 +101,7 @@ from ui_helpers import (
     get_groups_dashboard_keyboard,
     get_group_detail_keyboard,
     get_new_group_alert_keyboard,
-    get_homework_keyboard,
+    get_language_selection_keyboard,
 )
 from memory_manager import (
     add_or_update_memory,
@@ -415,7 +415,6 @@ async def post_init(application) -> None:
     if not IS_WINDOWS:
         asyncio.create_task(auto_heal_background_worker())
     asyncio.create_task(auto_update_watcher_worker(application))
-    asyncio.create_task(daily_homework_reminder_worker(application))
 
 
 async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -464,42 +463,72 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
         return
 
-    first_name = user.first_name or "Ami" if user else "Ami"
+    first_name = user.first_name or "Friend" if user else "Friend"
+    raw_text = update.message.text if update.message else ""
+    user_lang = detect_and_set_language(uid, raw_text, getattr(user, "language_code", None))
     just_claimed = ensure_first_admin_if_needed(user)
 
     if is_admin(uid):
         agent_name = settings.get("agent_name", "Antigravity Agent")
-        claim_banner = (
-            "🎉 <b>Configuration Initiale Réussie !</b>\n"
-            f"Votre compte (<code>{uid}</code>) a été enregistré comme <b>Administrateur Principal</b>.\n\n"
-            if just_claimed
-            else ""
-        )
-        welcome = (
-            f"{claim_banner}"
-            f"👋 <b>Bienvenue sur {h(agent_name)} (Antigravity CLI v4.0) !</b>\n\n"
-            "Votre passerelle IA autonome universelle (Windows & Linux) propulsée par la dernière version de <b>Google Antigravity CLI</b>.\n\n"
-            "⚡ <b>Capacités Intégrées :</b>\n"
-            "• 🧠 <b>Modèles & Effort Dynamiques :</b> Sélection en direct depuis <code>agy models</code> et effort jusqu'à <code>xhigh</code> / <code>max</code> (<code>/settings</code>, <code>/models</code>).\n"
-            "• 🤝 <b>Multi-Agents & Sous-Agents :</b> Orchestration parallèle de sous-agents autonomes (<code>/agents</code>, <code>/teamwork</code>).\n"
-            "• 📤 <b>Multimédia Bidirectionnel :</b> Envoyez et recevez images, vidéos, audios, notes vocales, PDF et archives sans limite.\n"
-            "• 🔌 <b>Écosystème CLI Complet :</b> Gérez vos serveurs <code>/mcp</code>, <code>/plugins</code>, <code>/remote</code> et <code>/sessions</code> en un clic.\n"
-            "• 🧠 <b>Mémoire Long-Terme Inter-Conversations :</b> Mémoire vectorielle locale Mem0 (<code>/memory</code>, <code>/remember</code>, <code>/forget</code>).\n"
-            "• 🏫 <b>Veille Scolaire & Groupes :</b> Mode écoute silencieuse, détection des devoirs & rappels quotidiens (<code>/groups</code>, <code>/homework</code>).\n\n"
-            "💡 <i>Envoyez un message, une photo, un fichier ou tapez <code>/settings</code> pour tout personnaliser !</i>"
-        )
+        if user_lang == "fr":
+            claim_banner = (
+                "🎉 <b>Configuration Initiale Réussie !</b>\n"
+                f"Votre compte (<code>{uid}</code>) a été enregistré comme <b>Administrateur Principal</b>.\n\n"
+                if just_claimed else ""
+            )
+            welcome = (
+                f"{claim_banner}"
+                f"👋 <b>Bienvenue sur {h(agent_name)} (Antigravity CLI v4.2) !</b>\n\n"
+                "Votre passerelle IA autonome universelle (Windows &amp; Linux) propulsée par la dernière version de <b>Google Antigravity CLI</b>.\n\n"
+                "⚡ <b>Capacités Intégrées :</b>\n"
+                "• 🧠 <b>Modèles &amp; Effort Dynamiques :</b> Sélection en direct depuis <code>agy models</code> et réflexion (<code>/settings</code>, <code>/models</code>, <code>/effort</code>).\n"
+                "• 🤝 <b>Multi-Agents &amp; Essaims :</b> Orchestration parallèle de sous-agents autonomes (<code>/agents</code>, <code>/teamwork</code>).\n"
+                "• 📤 <b>Multimédia Complet :</b> Envoyez et recevez images, vidéos, audios, vocaux, PDF et archives.\n"
+                "• 🔌 <b>Écosystème CLI :</b> Gestion en 1 clic des serveurs <code>/mcp</code>, <code>/plugins</code>, <code>/remote</code> et <code>/sessions</code>.\n"
+                "• 🧠 <b>Mémoire Long-Terme :</b> Mémoire vectorielle locale Mem0 (<code>/memory</code>, <code>/remember</code>, <code>/forget</code>).\n"
+                "• 🏫 <b>Intelligence de Groupe &amp; Missions :</b> Écoute furtive, missions 100% sur-mesure &amp; permissions granulaires (<code>/groups</code>).\n"
+                "• 🌐 <b>Multilingue :</b> Détection automatique de la langue (<code>/language</code>).\n\n"
+                "💡 <i>Envoyez un message, une photo, un fichier ou tapez <code>/settings</code> pour tout personnaliser !</i>"
+            )
+        else:
+            claim_banner = (
+                "🎉 <b>Initial Setup Complete!</b>\n"
+                f"Your account (<code>{uid}</code>) has been registered as the <b>Primary Administrator</b>.\n\n"
+                if just_claimed else ""
+            )
+            welcome = (
+                f"{claim_banner}"
+                f"👋 <b>Welcome to {h(agent_name)} (Antigravity CLI v4.2)!</b>\n\n"
+                "Your universal autonomous AI gateway (Windows &amp; Linux) powered by the latest <b>Google Antigravity CLI</b>.\n\n"
+                "⚡ <b>Core Capabilities:</b>\n"
+                "• 🧠 <b>Dynamic Models &amp; Thinking:</b> Live CLI model selection &amp; reasoning levels (<code>/settings</code>, <code>/models</code>, <code>/effort</code>).\n"
+                "• 🤝 <b>Multi-Agent Swarm:</b> Parallel orchestration of autonomous subagents (<code>/agents</code>, <code>/teamwork</code>).\n"
+                "• 📤 <b>Full Multimedia:</b> Seamlessly send and receive images, videos, audio, voice notes, PDFs and archives.\n"
+                "• 🔌 <b>CLI Ecosystem:</b> 1-click management of <code>/mcp</code> servers, <code>/plugins</code>, <code>/remote</code>, and <code>/sessions</code>.\n"
+                "• 🧠 <b>Long-Term Memory:</b> Local vector memory across conversations (<code>/memory</code>, <code>/remember</code>, <code>/forget</code>).\n"
+                "• 🏫 <b>Group Intelligence &amp; Missions:</b> Stealth observation, 100% customizable missions &amp; granular permissions (<code>/groups</code>).\n"
+                "• 🌐 <b>Multilingual:</b> Dynamic auto-detection and language settings (<code>/language</code>).\n\n"
+                "💡 <i>Send a prompt, photo, or document, or type <code>/settings</code> to configure everything!</i>"
+            )
         await update.message.reply_text(
             welcome,
             reply_markup=get_settings_keyboard(settings),
             parse_mode=PM,
         )
     else:
+        req_btn_label = "📨 Demander un accès à l'Administrateur" if user_lang == "fr" else "📨 Request Access from Administrator"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📨 Demander un accès à l'Administrateur", callback_data="guest_req:ask")]
+            [InlineKeyboardButton(req_btn_label, callback_data="guest_req:ask")]
         ])
-        await update.message.reply_text(
+        guest_msg = (
             f"👋 Bonjour {h(first_name)} !\n\n"
-            "🔒 Ce bot Antigravity est privé. Cliquez ci-dessous si vous souhaitez demander une autorisation d'accès :",
+            "🔒 Ce bot Antigravity est privé. Cliquez ci-dessous si vous souhaitez demander une autorisation d'accès :"
+            if user_lang == "fr" else
+            f"👋 Hello {h(first_name)}!\n\n"
+            "🔒 This Antigravity bot is private. Click below to request access from the administrator:"
+        )
+        await update.message.reply_text(
+            guest_msg,
             reply_markup=kb,
             parse_mode=PM,
         )
@@ -509,37 +538,73 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin_access(update):
         return
 
-    help_text = (
-        "📚 <b>Guide Complet — Antigravity Telegram Agent</b>\n\n"
-        "<b>🎛️ Contrôle & Configuration Antigravity CLI :</b>\n"
-        "• <code>/settings</code> : Centre de contrôle interactif complet\n"
-        "• <code>/models</code> : Choisir le modèle IA en direct (<code>agy models</code>)\n"
-        "• <code>/effort</code> : Régler la réflexion (<code>auto</code>, <code>low</code>, <code>medium</code>, <code>high</code>, <code>xhigh</code>, <code>max</code>)\n"
-        "• <code>/mode</code> : Mode d'exécution (<code>auto-approve</code>, <code>accept-edits</code>, <code>plan</code>)\n"
-        "• <code>/agents</code> : Configurer le mode Multi-Agents & les profils d'agents\n"
-        "• <code>/mcp</code> : Activer/désactiver ou ajouter des serveurs MCP\n"
-        "• <code>/plugins</code> : Gérer et importer les plugins Antigravity CLI\n"
-        "• <code>/remote</code> : Démarrer/arrêter le démon Remote Control\n"
-        "• <code>/workspace</code> : Changer le dossier de travail actif\n"
-        "• <code>/update_cli</code> : Mettre à jour le binaire <code>agy</code>\n\n"
-        "<b>💬 Sessions & Exécution :</b>\n"
-        "• <code>/status</code> : État système, version CLI, RAM/CPU et tokens utilisés\n"
-        "• <code>/sessions</code> : Reprendre une conversation précédente ou en créer une\n"
-        "• <code>/clear</code> : Réinitialiser la session en cours\n"
-        "• <code>/abort</code> : Stopper immédiatement l'exécution en cours\n\n"
-        "<b>🏫 Groupes & Suivi Scolaire :</b>\n"
-        "• <code>/groups</code> : Gérer les groupes, permissions & mode écoute passive\n"
-        "• <code>/homework</code> (ou <code>/devoirs</code>) : Consulter et valider les devoirs détectés\n\n"
-        "<b>🚀 Workflows Spéciaux & Multi-Agents :</b>\n"
-        "• <code>/goal &lt;objectif&gt;</code> : Exécution autonome longue durée jusqu'à 100%\n"
-        "• <code>/teamwork &lt;mission&gt;</code> : Déployer une équipe de sous-agents en parallèle\n"
-        "• <code>/boost &lt;problème&gt;</code> : Réflexion maximale (<code>max</code>) multi-perspectives\n"
-        "• <code>/plan &lt;sujet&gt;</code> : Planification architecturale détaillée\n"
-        "• <code>/grill_me &lt;projet&gt;</code> : Entretien interactif de conception\n"
-        "• <code>/commands</code> : Créer vos propres commandes Telegram sur mesure\n\n"
-        "<b>🧠 Mémoire Long-Terme :</b>\n"
-        "• <code>/memory</code>, <code>/remember</code>, <code>/forget</code> : Mémoire vectorielle Mem0 (Profil, Préférences, Projets)"
-    )
+    uid = update.effective_user.id if update.effective_user else 0
+    user_lang = get_user_language(uid)
+
+    if user_lang == "fr":
+        help_text = (
+            "📚 <b>Guide Complet — Antigravity Telegram Agent</b>\n\n"
+            "<b>🎛️ Contrôle &amp; Configuration Antigravity CLI :</b>\n"
+            "• <code>/settings</code> : Centre de contrôle interactif complet\n"
+            "• <code>/models</code> : Choisir le modèle IA en direct (<code>agy models</code>)\n"
+            "• <code>/effort</code> : Régler la réflexion (<code>auto</code>, <code>low</code>, <code>medium</code>, <code>high</code>, <code>xhigh</code>, <code>max</code>)\n"
+            "• <code>/mode</code> : Mode d'exécution (<code>auto-approve</code>, <code>accept-edits</code>, <code>plan</code>)\n"
+            "• <code>/agents</code> : Configurer le mode Multi-Agents &amp; les profils d'agents\n"
+            "• <code>/mcp</code> : Activer/désactiver ou ajouter des serveurs MCP\n"
+            "• <code>/plugins</code> : Gérer et importer les plugins Antigravity CLI\n"
+            "• <code>/remote</code> : Démarrer/arrêter le démon Remote Control\n"
+            "• <code>/workspace</code> : Changer le dossier de travail actif\n"
+            "• <code>/update_cli</code> : Mettre à jour le binaire <code>agy</code>\n\n"
+            "<b>💬 Sessions &amp; Exécution :</b>\n"
+            "• <code>/status</code> : État système, version CLI, RAM/CPU et tokens utilisés\n"
+            "• <code>/sessions</code> : Reprendre une conversation précédente ou en créer une\n"
+            "• <code>/clear</code> : Réinitialiser la session en cours\n"
+            "• <code>/abort</code> : Stopper immédiatement l'exécution en cours\n\n"
+            "<b>🏫 Groupes &amp; Missions Personnalisées :</b>\n"
+            "• <code>/groups</code> : Gérer les groupes, permissions de lecture/écriture &amp; missions sur-mesure\n"
+            "• <code>/language</code> : Changer la langue d'interface (🇬🇧 English / 🇫🇷 Français)\n\n"
+            "<b>🚀 Workflows Spéciaux &amp; Multi-Agents :</b>\n"
+            "• <code>/goal &lt;objectif&gt;</code> : Exécution autonome longue durée jusqu'à 100%\n"
+            "• <code>/teamwork &lt;mission&gt;</code> : Déployer une équipe de sous-agents en parallèle\n"
+            "• <code>/boost &lt;problème&gt;</code> : Réflexion maximale (<code>max</code>) multi-perspectives\n"
+            "• <code>/plan &lt;sujet&gt;</code> : Planification architecturale détaillée\n"
+            "• <code>/grill_me &lt;projet&gt;</code> : Entretien interactif de conception\n"
+            "• <code>/commands</code> : Créer vos propres commandes Telegram sur mesure\n\n"
+            "<b>🧠 Mémoire Long-Terme :</b>\n"
+            "• <code>/memory</code>, <code>/remember</code>, <code>/forget</code> : Mémoire vectorielle Mem0"
+        )
+    else:
+        help_text = (
+            "📚 <b>Complete Manual — Antigravity Telegram Agent</b>\n\n"
+            "<b>🎛️ Antigravity CLI Control &amp; Settings:</b>\n"
+            "• <code>/settings</code>: Complete interactive Control Center\n"
+            "• <code>/models</code>: Choose AI model in real time (<code>agy models</code>)\n"
+            "• <code>/effort</code>: Set thinking effort (<code>auto</code>, <code>low</code>, <code>medium</code>, <code>high</code>, <code>xhigh</code>, <code>max</code>)\n"
+            "• <code>/mode</code>: Execution mode (<code>auto-approve</code>, <code>accept-edits</code>, <code>plan</code>)\n"
+            "• <code>/agents</code>: Multi-agent swarm &amp; agent profiles\n"
+            "• <code>/mcp</code>: Enable/disable or add MCP servers\n"
+            "• <code>/plugins</code>: Manage and import Antigravity CLI plugins\n"
+            "• <code>/remote</code>: Start/stop Antigravity Remote Control daemon\n"
+            "• <code>/workspace</code>: Change active workspace directory\n"
+            "• <code>/update_cli</code>: Update <code>agy</code> binary to latest version\n\n"
+            "<b>💬 Sessions &amp; Execution:</b>\n"
+            "• <code>/status</code>: System health, CLI version, RAM/CPU and token metrics\n"
+            "• <code>/sessions</code>: Resume previous conversation or start a new one\n"
+            "• <code>/clear</code>: Reset active conversation session\n"
+            "• <code>/abort</code>: Immediately cancel currently running task\n\n"
+            "<b>🏫 Groups &amp; Custom Missions:</b>\n"
+            "• <code>/groups</code>: Manage groups, read/write permissions &amp; custom missions\n"
+            "• <code>/language</code>: Change bot interface language (🇬🇧 English / 🇫🇷 Français)\n\n"
+            "<b>🚀 Special Workflows &amp; Multi-Agent Swarms:</b>\n"
+            "• <code>/goal &lt;task&gt;</code>: Autonomous long-running task until 100% complete\n"
+            "• <code>/teamwork &lt;mission&gt;</code>: Deploy parallel team of autonomous subagents\n"
+            "• <code>/boost &lt;problem&gt;</code>: Deep multi-perspective reasoning with max thinking\n"
+            "• <code>/plan &lt;topic&gt;</code>: Detailed architectural and implementation planning\n"
+            "• <code>/grill_me &lt;idea&gt;</code>: Interactive design interview\n"
+            "• <code>/commands</code>: Create and manage custom Telegram commands\n\n"
+            "<b>🧠 Long-Term Memory:</b>\n"
+            "• <code>/memory</code>, <code>/remember</code>, <code>/forget</code>: Local vector memory (Mem0)"
+        )
     await update.message.reply_text(help_text, parse_mode=PM)
 
 
@@ -899,8 +964,10 @@ async def cmd_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin_access(update):
         return
 
+    uid = update.effective_user.id if update.effective_user else 0
+    user_lang = get_user_language(uid)
     args = context.args or []
-    if args and args[0].lower() == "add" and len(args) > 1:
+    if args and args[0].lower() in ("add", "register") and len(args) > 1:
         try:
             target_id = int(args[1])
             title = " ".join(args[2:]).strip() if len(args) > 2 else f"Groupe {target_id}"
@@ -908,38 +975,55 @@ async def cmd_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=target_id,
                 title=title,
                 chat_type=ChatType.SUPERGROUP,
-                added_by_id=update.effective_user.id,
+                added_by_id=uid,
                 added_by_name=update.effective_user.first_name or "",
                 auto_authorize_if_admin=True,
             )
-            await update.message.reply_text(
+            msg_ok = (
                 f"✅ <b>Groupe « {h(title)} » (<code>{target_id}</code>) enregistré !</b>\n\n"
-                "• <b>Mode Actuel :</b> 🔇 <b>Écoute Seule (Silencieux)</b>\n"
-                "• <b>Suivi Scolaire :</b> ✅ Activé",
+                f"• <b>Mode :</b> 🔇 <b>Écoute Seule (Silencieux)</b>\n"
+                f"• <b>Lecture :</b> ✅ Activée | <b>Écriture :</b> ⛔ Bloquée"
+                if user_lang == "fr" else
+                f"✅ <b>Group « {h(title)} » (<code>{target_id}</code>) registered!</b>\n\n"
+                f"• <b>Mode:</b> 🔇 <b>Stealth Listening (Silent)</b>\n"
+                f"• <b>Read:</b> ✅ Enabled | <b>Write:</b> ⛔ Blocked"
+            )
+            await update.message.reply_text(
+                msg_ok,
                 reply_markup=get_group_detail_keyboard(target_id, g_info),
                 parse_mode=PM,
             )
             return
         except ValueError:
-            await update.message.reply_text("❌ L'ID de groupe doit être un nombre (ex: <code>-1001234567890</code>).", parse_mode=PM)
+            err_msg = "❌ L'ID de groupe doit être un nombre (ex: <code>-1001234567890</code>)." if user_lang == "fr" else "❌ Group ID must be an integer (e.g. <code>-1001234567890</code>)."
+            await update.message.reply_text(err_msg, parse_mode=PM)
             return
 
     groups = group_mgr.list_groups()
     total = len(groups)
     active = sum(1 for g in groups.values() if g.get("mode") == MODE_ACTIVE and g.get("status") != "left")
     passive = sum(1 for g in groups.values() if g.get("mode") == MODE_PASSIVE and g.get("status") != "left")
-    school = sum(1 for g in groups.values() if g.get("school_tracking", True) and g.get("status") != "left")
 
-    text = (
-        "🏫 <b>Gestion des Groupes & Canaux Telegram</b>\n\n"
-        f"• <b>Groupes enregistrés :</b> <code>{total}</code>\n"
-        f"• 🔇 <b>Mode Écoute Seule (Silencieux) :</b> <code>{passive}</code>\n"
-        f"• 💬 <b>Mode Interactif (@mentions) :</b> <code>{active}</code>\n"
-        f"• 📚 <b>Suivi Scolaire & Devoirs :</b> <code>{school}</code>\n\n"
-        "🛡️ <i>En mode Écoute Seule (par défaut), le bot analyse les devoirs et leçons sans JAMAIS envoyer "
-        "le moindre message dans le groupe scolaire. Cliquez sur un groupe ci-dessous pour modifier ses règles ou le faire quitter :</i>\n\n"
-        "💡 <i>Astuce : Transférez n'importe quel message du groupe ici en privé pour l'enregistrer instantanément !</i>"
-    )
+    if user_lang == "fr":
+        text = (
+            "🏫 <b>Gestion des Groupes & Canaux Telegram</b>\n\n"
+            f"• <b>Groupes enregistrés :</b> <code>{total}</code>\n"
+            f"• 🔇 <b>Mode Écoute Seule (Silencieux) :</b> <code>{passive}</code>\n"
+            f"• 💬 <b>Mode Interactif (@mentions) :</b> <code>{active}</code>\n\n"
+            "🛡️ <i>En mode Écoute Seule (par défaut), le bot enregistre les messages sans JAMAIS écrire dans le groupe. "
+            "Vous pouvez attribuer à l'agent une mission personnalisée (surveillance, résumés, réponses, devoirs, alertes...).</i>\n\n"
+            "💡 <i>Cliquez sur un groupe ci-dessous pour régler ses permissions ou définir sa mission :</i>"
+        )
+    else:
+        text = (
+            "🏫 <b>Telegram Groups & Channels Management</b>\n\n"
+            f"• <b>Registered Groups:</b> <code>{total}</code>\n"
+            f"• 🔇 <b>Stealth Listening (Silent):</b> <code>{passive}</code>\n"
+            f"• 💬 <b>Interactive Mode (@mentions):</b> <code>{active}</code>\n\n"
+            "🛡️ <i>In Stealth Listening mode (default), the bot observes messages without EVER sending anything to the group. "
+            "You can assign any custom mission to the agent per group (monitoring, summaries, alerts, automated answers, etc.).</i>\n\n"
+            "💡 <i>Click a group below to configure permissions (read/write), set a custom mission, or have the bot leave:</i>"
+        )
     await update.message.reply_text(
         text,
         reply_markup=get_groups_dashboard_keyboard(groups),
@@ -947,15 +1031,18 @@ async def cmd_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def cmd_homework(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_admin_access(update):
-        return
-
-    pending = school_mgr.get_pending_homework()
-    text = school_mgr.format_homework_html()
+async def cmd_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id if update.effective_user else 0
+    cur_lang = get_user_language(uid)
+    text = (
+        "🌐 <b>Language Settings / Paramètres de Langue</b>\n\n"
+        f"• <b>Active Language / Langue active :</b> <code>{'🇬🇧 English' if cur_lang == 'en' else '🇫🇷 Français'}</code>\n\n"
+        "Choose your preferred interface language below:\n"
+        "Choisissez votre langue d'interface ci-dessous :"
+    )
     await update.message.reply_text(
         text,
-        reply_markup=get_homework_keyboard(pending),
+        reply_markup=get_language_selection_keyboard(cur_lang),
         parse_mode=PM,
     )
 
@@ -1885,16 +1972,27 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         total = len(groups)
         active = sum(1 for g in groups.values() if g.get("mode") == MODE_ACTIVE and g.get("status") != "left")
         passive = sum(1 for g in groups.values() if g.get("mode") == MODE_PASSIVE and g.get("status") != "left")
-        school = sum(1 for g in groups.values() if g.get("school_tracking", True) and g.get("status") != "left")
-        text = (
-            "🏫 <b>Gestion des Groupes & Canaux Telegram</b>\n\n"
-            f"• <b>Groupes enregistrés :</b> <code>{total}</code>\n"
-            f"• 🔇 <b>Mode Écoute Seule (Silencieux) :</b> <code>{passive}</code>\n"
-            f"• 💬 <b>Mode Interactif (@mentions) :</b> <code>{active}</code>\n"
-            f"• 📚 <b>Suivi Scolaire & Devoirs :</b> <code>{school}</code>\n\n"
-            "🛡️ <i>En mode Écoute Seule (par défaut), le bot analyse les devoirs et leçons sans JAMAIS envoyer "
-            "le moindre message dans le groupe scolaire. Cliquez sur un groupe ci-dessous pour modifier ses règles ou le faire quitter :</i>"
-        )
+        user_lang = get_user_language(uid)
+        if user_lang == "fr":
+            text = (
+                "🏫 <b>Gestion des Groupes & Canaux Telegram</b>\n\n"
+                f"• <b>Groupes enregistrés :</b> <code>{total}</code>\n"
+                f"• 🔇 <b>Mode Écoute Seule (Silencieux) :</b> <code>{passive}</code>\n"
+                f"• 💬 <b>Mode Interactif (@mentions) :</b> <code>{active}</code>\n\n"
+                "🛡️ <i>En mode Écoute Seule (par défaut), le bot enregistre les messages sans JAMAIS écrire dans le groupe. "
+                "Vous pouvez attribuer à l'agent une mission personnalisée (surveillance, résumés, réponses, devoirs, alertes...).</i>\n\n"
+                "💡 <i>Cliquez sur un groupe ci-dessous pour régler ses permissions ou définir sa mission :</i>"
+            )
+        else:
+            text = (
+                "🏫 <b>Telegram Groups & Channels Management</b>\n\n"
+                f"• <b>Registered Groups:</b> <code>{total}</code>\n"
+                f"• 🔇 <b>Stealth Listening (Silent):</b> <code>{passive}</code>\n"
+                f"• 💬 <b>Interactive Mode (@mentions):</b> <code>{active}</code>\n\n"
+                "🛡️ <i>In Stealth Listening mode (default), the bot observes messages without EVER sending anything to the group. "
+                "You can assign any custom mission to the agent per group (monitoring, summaries, alerts, automated answers, etc.).</i>\n\n"
+                "💡 <i>Click a group below to configure permissions (read/write), set a custom mission, or have the bot leave:</i>"
+            )
         await safe_edit_message(query.message, text, reply_markup=get_groups_dashboard_keyboard(groups))
         return
 
@@ -1902,45 +2000,111 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer()
         parts = data.split(":")
         action = parts[1]
+        user_lang = get_user_language(uid)
+
         if action == "view":
             target_chat_id = int(parts[2])
             g = group_mgr.get_group(target_chat_id) or {}
             title = g.get("title", f"Groupe {target_chat_id}")
             mode = g.get("mode", "passive")
             is_auth = g.get("is_authorized", False)
-            school_on = g.get("school_tracking", True)
             status = g.get("status", "active")
-            text = (
-                f"🏫 <b>Fiche Groupe : {h(title)}</b>\n\n"
-                f"• <b>ID Telegram :</b> <code>{target_chat_id}</code>\n"
-                f"• <b>Statut :</b> {'Actif ✅' if status != 'left' else 'Quitté 🚪'}\n"
-                f"• <b>Autorisation :</b> {'Autorisé ✅' if is_auth else 'Non-autorisé ⏳'}\n"
-                f"• <b>Mode de fonctionnement :</b> <code>{mode}</code>\n"
-                f"  ◦ <i>{'Écoute 100% silencieuse (surveillance/devoirs)' if mode == 'passive' else ('Répond uniquement si mentionné (@tag)' if mode == 'active' else 'Désactivé')}</i>\n"
-                f"• <b>Suivi Scolaire & Devoirs :</b> {'Actif 📚' if school_on else 'Désactivé ⚪'}\n"
-                f"• <b>Ajouté par :</b> {h(g.get('added_by_name', 'Inconnu'))} (<code>{g.get('added_by_id', '')}</code>)"
-            )
+            can_read = g.get("can_read", True)
+            can_write = g.get("can_write", False)
+            mission = g.get("mission", "").strip()
+            msg_count = len(g.get("recent_messages", []))
+
+            if user_lang == "fr":
+                text = (
+                    f"🏫 <b>Fiche Groupe : {h(title)}</b>\n\n"
+                    f"• <b>ID Telegram :</b> <code>{target_chat_id}</code>\n"
+                    f"• <b>Statut :</b> {'Actif ✅' if status != 'left' else 'Quitté 🚪'}\n"
+                    f"• <b>Autorisation :</b> {'Autorisé ✅' if is_auth else 'Non-autorisé ⏳'}\n"
+                    f"• <b>Mode de fonctionnement :</b> <code>{mode}</code>\n"
+                    f"  ◦ <i>{'Écoute silencieuse (surveillance/missions)' if mode == 'passive' else ('Répond uniquement si mentionné (@tag)' if mode == 'active' else 'Désactivé')}</i>\n"
+                    f"• <b>Lecture :</b> {'Activée ✅' if can_read else 'Désactivée ❌'} | <b>Écriture :</b> {'Autorisée ✅' if can_write else 'Bloquée ⛔'}\n"
+                    f"• <b>Messages en mémoire :</b> <code>{msg_count}</code>\n"
+                    f"• <b>Mission assignée :</b> {f'<blockquote>{h(mission)}</blockquote>' if mission else '<i>Aucune mission spécifique (veille standard)</i>'}\n"
+                    f"• <b>Ajouté par :</b> {h(g.get('added_by_name', 'Inconnu'))} (<code>{g.get('added_by_id', '')}</code>)"
+                )
+            else:
+                text = (
+                    f"🏫 <b>Group Card: {h(title)}</b>\n\n"
+                    f"• <b>Telegram ID:</b> <code>{target_chat_id}</code>\n"
+                    f"• <b>Status:</b> {'Active ✅' if status != 'left' else 'Left 🚪'}\n"
+                    f"• <b>Authorization:</b> {'Authorized ✅' if is_auth else 'Unauthorized ⏳'}\n"
+                    f"• <b>Mode:</b> <code>{mode}</code>\n"
+                    f"  ◦ <i>{'Stealth listening (monitoring/missions)' if mode == 'passive' else ('Replies only when @mentioned' if mode == 'active' else 'Disabled')}</i>\n"
+                    f"• <b>Read:</b> {'Enabled ✅' if can_read else 'Disabled ❌'} | <b>Write:</b> {'Allowed ✅' if can_write else 'Blocked ⛔'}\n"
+                    f"• <b>Buffered Messages:</b> <code>{msg_count}</code>\n"
+                    f"• <b>Assigned Mission:</b> {f'<blockquote>{h(mission)}</blockquote>' if mission else '<i>None (standard monitoring)</i>'}\n"
+                    f"• <b>Added by:</b> {h(g.get('added_by_name', 'Unknown'))} (<code>{g.get('added_by_id', '')}</code>)"
+                )
             await safe_edit_message(query.message, text, reply_markup=get_group_detail_keyboard(target_chat_id, g))
         elif action == "auth":
             target_chat_id = int(parts[2])
             auth_flag = bool(int(parts[3]))
             group_mgr.set_authorization(target_chat_id, auth_flag)
             g = group_mgr.get_group(target_chat_id) or {}
-            await query.answer(f"Groupe {'autorisé ✅' if auth_flag else 'bloqué ⛔'}")
-            await safe_edit_message(query.message, f"Mise à jour du groupe {target_chat_id}...", reply_markup=get_group_detail_keyboard(target_chat_id, g))
+            await query.answer(f"Groupe {'autorisé ✅' if auth_flag else 'bloqué ⛔'}" if user_lang == "fr" else f"Group {'authorized ✅' if auth_flag else 'blocked ⛔'}")
+            await safe_edit_message(query.message, f"Groupe {target_chat_id} mis à jour.", reply_markup=get_group_detail_keyboard(target_chat_id, g))
         elif action == "mode":
             target_chat_id = int(parts[2])
             new_mode = parts[3]
             group_mgr.set_mode(target_chat_id, new_mode)
             g = group_mgr.get_group(target_chat_id) or {}
-            await query.answer(f"Mode défini sur : {new_mode}")
+            await query.answer(f"Mode : {new_mode}")
             await safe_edit_message(query.message, f"Mode mis à jour : {new_mode}", reply_markup=get_group_detail_keyboard(target_chat_id, g))
-        elif action == "school":
+        elif action == "perm":
             target_chat_id = int(parts[2])
-            new_val = group_mgr.toggle_school_tracking(target_chat_id)
+            perm_name = parts[3]
+            new_val = group_mgr.toggle_permission(target_chat_id, perm_name)
             g = group_mgr.get_group(target_chat_id) or {}
-            await query.answer(f"Suivi scolaire : {'Activé ✅' if new_val else 'Désactivé ❌'}")
-            await safe_edit_message(query.message, f"Suivi scolaire : {'Activé ✅' if new_val else 'Désactivé ❌'}", reply_markup=get_group_detail_keyboard(target_chat_id, g))
+            status_txt = "Activé ✅" if new_val else "Désactivé ❌"
+            await query.answer(f"{perm_name} : {status_txt}")
+            await safe_edit_message(query.message, f"Permission {perm_name} : {status_txt}", reply_markup=get_group_detail_keyboard(target_chat_id, g))
+        elif action == "mission":
+            target_chat_id = int(parts[2])
+            pending_admin_input[uid] = f"grp_mission:{target_chat_id}"
+            if user_lang == "fr":
+                prompt_msg = (
+                    "🎯 <b>Définir la Mission de l'Agent pour ce Groupe</b>\n\n"
+                    "Envoyez par message texte les instructions que l'agent doit accomplir pour ce groupe.\n\n"
+                    "<i>Exemples de missions :</i>\n"
+                    "• <code>Surveille les devoirs et dates importantes annoncées par les professeurs</code>\n"
+                    "• <code>Fais un résumé synthétique des discussions chaque soir</code>\n"
+                    "• <code>Alerte-moi immédiatement si quelqu'un mentionne un bug ou une urgence</code>\n"
+                    "• <code>Réponds courtoisement aux questions des membres sur le projet</code>\n\n"
+                    "💡 <i>Tapez <code>clear</code> pour supprimer la mission actuelle.</i>"
+                )
+            else:
+                prompt_msg = (
+                    "🎯 <b>Set Agent Mission for this Group</b>\n\n"
+                    "Send a text message with instructions the agent should carry out for this group.\n\n"
+                    "<i>Mission examples:</i>\n"
+                    "• <code>Track all homework and deadlines announced by teachers</code>\n"
+                    "• <code>Summarize daily discussions every evening</code>\n"
+                    "• <code>Alert me immediately if someone mentions an urgent issue or bug</code>\n"
+                    "• <code>Helpfully answer member questions about the project</code>\n\n"
+                    "💡 <i>Type <code>clear</code> to remove the current mission.</i>"
+                )
+            await safe_edit_message(query.message, prompt_msg)
+        elif action == "history":
+            target_chat_id = int(parts[2])
+            history = group_mgr.get_recent_messages(target_chat_id, limit=12)
+            g = group_mgr.get_group(target_chat_id) or {}
+            if not history:
+                empty_msg = "📜 Aucun message enregistré pour ce groupe pour le moment." if user_lang == "fr" else "📜 No messages recorded for this group yet."
+                await query.answer(empty_msg)
+                return
+            lines = [f"📜 <b>Derniers Messages Enregistrés ({len(history)}) :</b>\n" if user_lang == "fr" else f"📜 <b>Recent Recorded Messages ({len(history)}):</b>\n"]
+            for m in history[-8:]:
+                lines.append(f"• <b>{h(m.get('sender_name', 'Membre'))}</b> [{m.get('timestamp', '')[:16]}]:\n  <i>{h(m.get('text', '')[:120])}</i>")
+            await safe_edit_message(
+                query.message,
+                "\n".join(lines),
+                reply_markup=get_group_detail_keyboard(target_chat_id, g),
+            )
         elif action == "leave":
             target_chat_id = int(parts[2])
             try:
@@ -1948,13 +2112,13 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception as le:
                 logger.warning(f"Could not leave chat {target_chat_id}: {le}")
             group_mgr.mark_left(target_chat_id)
-            await query.answer("🚪 Le bot a quitté le groupe !")
+            await query.answer("🚪 Le bot a quitté le groupe !" if user_lang == "fr" else "🚪 Bot left the group!")
             groups = group_mgr.list_groups()
             await safe_edit_message(query.message, f"🚪 Le bot a quitté le groupe (<code>{target_chat_id}</code>).", reply_markup=get_groups_dashboard_keyboard(groups))
         elif action == "del":
             target_chat_id = int(parts[2])
             group_mgr.remove_group(target_chat_id)
-            await query.answer("Groupe retiré de la liste.")
+            await query.answer("Groupe retiré de la liste." if user_lang == "fr" else "Group removed from list.")
             groups = group_mgr.list_groups()
             await safe_edit_message(query.message, "Groupe retiré de la liste.", reply_markup=get_groups_dashboard_keyboard(groups))
         elif action == "quick":
@@ -1966,35 +2130,41 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 except Exception:
                     pass
                 group_mgr.mark_left(target_chat_id)
-                await query.answer("🚪 Groupe quitté !")
+                await query.answer("🚪 Groupe quitté !" if user_lang == "fr" else "🚪 Group left!")
                 await safe_edit_message(query.message, f"🚪 Le bot a quitté le groupe (<code>{target_chat_id}</code>).")
             else:
                 group_mgr.set_authorization(target_chat_id, True)
                 group_mgr.set_mode(target_chat_id, q_mode)
-                await query.answer(f"Configuration validée ({q_mode})")
+                await query.answer(f"Configuration validée ({q_mode})" if user_lang == "fr" else f"Configuration saved ({q_mode})")
                 await safe_edit_message(query.message, f"✅ Groupe configuré en mode <b>{q_mode}</b>.")
         return
 
-    # --- School & Homework Menu ---
-    if data == "menu_homework":
+    # --- Language Selection Menu ---
+    if data == "menu_language":
         await query.answer()
-        pending = school_mgr.get_pending_homework()
+        cur_lang = get_user_language(uid)
         await safe_edit_message(
             query.message,
-            school_mgr.format_homework_html(),
-            reply_markup=get_homework_keyboard(pending),
+            "🌐 <b>Language Settings / Paramètres de Langue</b>\n\n"
+            f"• <b>Active Language / Langue active :</b> <code>{'🇬🇧 English' if cur_lang == 'en' else '🇫🇷 Français'}</code>\n\n"
+            "Select your preferred language below / Choisissez votre langue ci-dessous :",
+            reply_markup=get_language_selection_keyboard(cur_lang),
         )
         return
 
-    if data.startswith("hw:done:"):
-        hw_id = data.split(":", 2)[2]
-        school_mgr.mark_homework_done(hw_id)
-        await query.answer("Devoir marqué comme terminé ! 🎉")
-        pending = school_mgr.get_pending_homework()
+    if data.startswith("set_lang:"):
+        new_lang = data.split(":", 1)[1]
+        set_user_language(uid, new_lang)
+        await query.answer("Language updated! / Langue mise à jour ! ✅")
+        confirm_text = (
+            "🌐 <b>Language changed to English (Default) 🇬🇧</b>\n\nAll bot interfaces, notifications, and menus will adapt to English."
+            if new_lang == "en" else
+            "🌐 <b>Langue changée en Français 🇫🇷</b>\n\nLes interfaces, notifications et menus du bot s'afficheront désormais en Français."
+        )
         await safe_edit_message(
             query.message,
-            school_mgr.format_homework_html(),
-            reply_markup=get_homework_keyboard(pending),
+            confirm_text,
+            reply_markup=get_language_selection_keyboard(new_lang),
         )
         return
 
@@ -2008,6 +2178,28 @@ async def _handle_pending_admin_input(update: Update, context: ContextTypes.DEFA
     state = pending_admin_input.pop(uid, None)
     if not state:
         return False
+
+    if state.startswith("grp_mission:"):
+        target_chat_id = int(state.split(":", 1)[1])
+        cleaned_text = text.strip()
+        user_lang = get_user_language(uid)
+        if cleaned_text.lower() in ("clear", "aucun", "none", "effacer", "supprimer"):
+            group_mgr.set_mission(target_chat_id, "")
+            resp = "✅ <b>Mission réinitialisée pour ce groupe !</b>" if user_lang == "fr" else "✅ <b>Group mission cleared!</b>"
+        else:
+            group_mgr.set_mission(target_chat_id, cleaned_text)
+            resp = (
+                f"✅ <b>Mission enregistrée pour ce groupe :</b>\n<blockquote>{h(cleaned_text)}</blockquote>"
+                if user_lang == "fr" else
+                f"✅ <b>Custom mission saved for this group:</b>\n<blockquote>{h(cleaned_text)}</blockquote>"
+            )
+        g = group_mgr.get_group(target_chat_id) or {}
+        await update.message.reply_text(
+            resp,
+            reply_markup=get_group_detail_keyboard(target_chat_id, g),
+            parse_mode=PM,
+        )
+        return True
 
     if state == "ws_change":
         p = Path(text.strip()).expanduser()
@@ -2121,6 +2313,9 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
     if not prompt:
         return
 
+    # Dynamic auto-detection of language (updates user language preference)
+    user_lang = detect_and_set_language(uid, prompt, getattr(user, "language_code", None))
+
     is_private = is_private_chat(update)
 
     if not is_private:
@@ -2136,52 +2331,33 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
         if is_new:
             admin_id = auth_mgr.get_primary_admin_id()
             if admin_id:
+                adm_lang = get_user_language(admin_id)
                 try:
                     await context.bot.send_message(
                         chat_id=admin_id,
                         text=(
-                            f"🏫 <b>Nouveau Groupe Détecté &amp; Enregistré !</b>\n\n"
-                            f"• <b>Titre :</b> {h(chat.title or 'Sans titre')}\n"
+                            f"🏫 <b>{'Nouveau Groupe Détecté &amp; Enregistré !' if adm_lang == 'fr' else 'New Group Detected &amp; Registered!'}</b>\n\n"
+                            f"• <b>{'Titre' if adm_lang == 'fr' else 'Title'} :</b> {h(chat.title or 'Sans titre')}\n"
                             f"• <b>ID Telegram :</b> <code>{chat.id}</code>\n"
-                            "• <b>Mode :</b> 🔇 Écoute Seule (Silencieux)\n\n"
-                            "Tapez /groups pour gérer ce groupe."
+                            f"• <b>Mode :</b> 🔇 {'Écoute Seule (Silencieux)' if adm_lang == 'fr' else 'Stealth Listening (Silent)'}\n\n"
+                            f"<i>{'Tapez /groups pour configurer la mission et les permissions de ce groupe.' if adm_lang == 'fr' else 'Type /groups to configure missions and permissions for this group.'}</i>"
                         ),
+                        reply_markup=get_new_group_alert_keyboard(chat.id),
                         parse_mode=PM,
                     )
                 except Exception:
                     pass
 
-        # 1. Passive Homework & Course Intelligence
-        if group_mgr.can_read(chat.id) and group_mgr.is_school_tracking_enabled(chat.id):
-            detected = school_mgr.analyze_incoming_message(
-                text=prompt,
-                sender_name=user.first_name or "Camarade/Prof",
-                chat_title=chat.title or "Groupe École",
+        # 1. Passive Group Intelligence: Record message ring buffer if read permission is granted
+        if group_mgr.can_read(chat.id):
+            group_mgr.record_message(
                 chat_id=chat.id,
+                sender_name=user.first_name or "Member",
+                user_id=uid,
+                text=prompt,
             )
-            if detected.get("homework"):
-                admin_id = auth_mgr.get_primary_admin_id()
-                if admin_id:
-                    hw = detected["homework"]
-                    due_lbl = hw.get("due_date_label") or hw.get("due_date")
-                    try:
-                        await context.bot.send_message(
-                            chat_id=admin_id,
-                            text=(
-                                "📚 <b>Nouveau Devoir Détecté dans le Groupe !</b>\n\n"
-                                f"• <b>Matière :</b> {h(hw['subject'])}\n"
-                                f"• <b>Pour :</b> <code>{h(due_lbl)}</code>\n"
-                                f"• <b>Groupe :</b> {h(chat.title or '')}\n"
-                                f"• <b>Par :</b> {h(user.first_name or '')}\n"
-                                f"• <b>Détails :</b>\n<blockquote>{h(hw['description'][:300])}</blockquote>\n\n"
-                                "<i>Le devoir a été ajouté à votre agenda /homework et à la mémoire de l'agent.</i>"
-                            ),
-                            parse_mode=PM,
-                        )
-                    except Exception as ex:
-                        logger.debug(f"Could not alert admin about homework: {ex}")
 
-        # 2. Strict silence check: If mode is PASSIVE or DISABLED, NEVER respond or reject
+        # 2. Strict silence check: If write permission is denied or mode is PASSIVE/DISABLED, NEVER respond
         if not group_mgr.can_write(chat.id):
             return
 
@@ -2212,7 +2388,7 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
         if await _handle_pending_admin_input(update, context, prompt):
             return
 
-        # Check if user forwarded a message from a group/channel or teacher
+        # Check if user forwarded a message from a group/channel
         fwd_chat = getattr(update.message, "forward_from_chat", None)
         origin = getattr(update.message, "forward_origin", None)
         if origin:
@@ -2227,27 +2403,39 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
                 added_by_name=user.first_name or "",
                 auto_authorize_if_admin=True,
             )
-            if prompt and group_mgr.is_school_tracking_enabled(fwd_chat.id):
-                school_mgr.analyze_incoming_message(
-                    text=prompt,
-                    sender_name="Message Transféré",
-                    chat_title=fwd_chat.title or "Groupe",
+            if prompt and group_mgr.can_read(fwd_chat.id):
+                group_mgr.record_message(
                     chat_id=fwd_chat.id,
+                    sender_name="Forwarded",
+                    user_id=uid,
+                    text=prompt,
                 )
 
-            await update.message.reply_text(
-                "🏫 <b>Groupe Détecté &amp; Enregistré avec Succès !</b>\n\n"
+            reg_text = (
+                "🏫 <b>Groupe Détecté &amp; Enregistré !</b>\n\n"
                 f"• <b>Titre :</b> {h(fwd_chat.title or 'Sans titre')}\n"
                 f"• <b>ID Telegram :</b> <code>{fwd_chat.id}</code>\n"
-                f"• <b>Mode Actuel :</b> 🔇 <b>Écoute Seule (100% Silencieux)</b>\n"
-                f"• <b>Suivi Scolaire &amp; Devoirs :</b> ✅ Activé\n\n"
-                "🛡️ <i>Le bot surveille désormais ce groupe en toute discrétion sans jamais y écrire.</i>",
+                f"• <b>Mode Actuel :</b> 🔇 <b>Écoute Seule (Silencieux)</b>\n"
+                f"• <b>Lecture :</b> ✅ Activée | <b>Écriture :</b> ⛔ Bloquée\n\n"
+                "🛡️ <i>Le bot enregistre les messages du groupe sans JAMAIS y écrire. "
+                "Vous pouvez définir une mission sur-mesure pour ce groupe via /groups.</i>"
+                if user_lang == "fr" else
+                "🏫 <b>Group Detected &amp; Registered!</b>\n\n"
+                f"• <b>Title:</b> {h(fwd_chat.title or 'Untitled')}\n"
+                f"• <b>Telegram ID:</b> <code>{fwd_chat.id}</code>\n"
+                f"• <b>Current Mode:</b> 🔇 <b>Stealth Listening (100% Silent)</b>\n"
+                f"• <b>Read:</b> ✅ Enabled | <b>Write:</b> ⛔ Blocked\n\n"
+                "🛡️ <i>The bot records messages discreetly without ever writing to the group. "
+                "You can assign any custom mission to the agent anytime via /groups.</i>"
+            )
+            await update.message.reply_text(
+                reg_text,
                 reply_markup=get_group_detail_keyboard(fwd_chat.id, g_info),
                 parse_mode=PM,
             )
             return
 
-        # If forwarded in private, treat naturally as user input (never hijack all forwards as homework)
+        # If forwarded in private, treat naturally as user input
         if origin and prompt:
             sender_name = ""
             if hasattr(origin, "sender_user") and origin.sender_user:
@@ -2255,7 +2443,7 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
             elif hasattr(origin, "sender_user_name"):
                 sender_name = origin.sender_user_name or ""
 
-            fwd_header = f"📨 <i>Message transféré de <b>{h(sender_name or 'un tiers')}</b> :</i>\n\n"
+            fwd_header = f"📨 <i>Message transféré de <b>{h(sender_name or 'un tiers')}</b> :</i>\n\n" if user_lang == "fr" else f"📨 <i>Forwarded message from <b>{h(sender_name or 'third party')}</b>:</i>\n\n"
             await _process_user_turn(update, context, prompt, header=fwd_header)
             return
 
@@ -2267,11 +2455,6 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
             if norm_cmd in command_mgr.list_commands():
                 await dispatch_custom_command(update, context, norm_cmd, cmd_args)
                 return
-
-        # Friendly natural language shortcuts for homework
-        lower_p = prompt.lower()
-        if lower_p in ("mes devoirs", "devoirs", "homework", "les devoirs"):
-            await cmd_homework(update, context)
             return
 
         await _process_user_turn(update, context, prompt)
@@ -2899,51 +3082,6 @@ async def auto_update_watcher_worker(application):
         await asyncio.sleep(600)
 
 
-async def daily_homework_reminder_worker(application) -> None:
-    """
-    Background worker that checks for homework due tomorrow and sends a friendly reminder
-    to the Administrator once per day (in late afternoon / evening).
-    """
-    logger.info("Démarrage du worker de rappel quotidien des devoirs scolaires...")
-    await asyncio.sleep(45)
-    while True:
-        try:
-            # Respect resource governor so we never overload CPU/RAM
-            await governor.throttle_background_task()
-
-            now = datetime.now()
-            # Run reminder check around 17:00 (5 PM) onwards if not yet sent today
-            if now.hour >= 17 and not school_mgr.has_sent_reminder_today():
-                due_tomorrow = school_mgr.get_homework_due_tomorrow()
-                if due_tomorrow:
-                    admin_id = auth_mgr.get_primary_admin_id()
-                    if admin_id:
-                        lines = [
-                            "🔔 <b>Rappel Devoirs pour Demain !</b>\n",
-                            "Voici les devoirs ou révisions à rendre pour demain :\n",
-                        ]
-                        for idx, h_item in enumerate(due_tomorrow, 1):
-                            subj = h_item.get("subject", "Général")
-                            desc = h_item.get("description", "").replace("<", "&lt;").replace(">", "&gt;")
-                            if len(desc) > 140:
-                                desc = desc[:137] + "..."
-                            lines.append(f"<b>{idx}. [{subj}]</b> : <i>{desc}</i>")
-
-                        lines.append("\n💡 <i>Posez-moi des questions pour réviser (ex: 'fais-moi un résumé du cours') ou tapez /homework.</i>")
-
-                        await application.bot.send_message(
-                            chat_id=admin_id,
-                            text="\n".join(lines),
-                            reply_markup=get_homework_keyboard(due_tomorrow),
-                            parse_mode=PM,
-                        )
-                        school_mgr.mark_reminder_sent_today()
-                        logger.info(f"Daily homework reminder sent to admin ({len(due_tomorrow)} items).")
-        except Exception as e:
-            logger.debug(f"Daily homework reminder worker error: {e}")
-        await asyncio.sleep(1200)  # Check every 20 minutes
-
-
 async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handle bot joining, leaving, or being promoted/demoted in groups/channels.
@@ -2982,17 +3120,29 @@ async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_T
             group_mgr.mark_left(chat.id)
 
             if admin_id:
+                adm_lang = get_user_language(admin_id)
                 try:
-                    await context.bot.send_message(
-                        chat_id=admin_id,
-                        text=(
+                    if adm_lang == "fr":
+                        unauth_text = (
                             "⚠️ <b>Tentative d'ajout non-autorisé !</b>\n\n"
                             f"L'utilisateur <b>{h(actor.first_name if actor else 'Inconnu')}</b> "
                             f"(<code>{actor.id if actor else 0}</code>) a tenté d'ajouter le bot au groupe :\n"
                             f"• <b>Titre :</b> {h(chat.title or 'Sans titre')}\n"
-                            f"• <b>ID Groupe :</b> <code>{chat.id}</code>\n\n"
+                            f"• <b>ID Telegram :</b> <code>{chat.id}</code>\n\n"
                             "🛡️ <i>Le bot a immédiatement quitté le groupe pour préserver votre vie privée.</i>"
-                        ),
+                        )
+                    else:
+                        unauth_text = (
+                            "⚠️ <b>Unauthorized Addition Attempt!</b>\n\n"
+                            f"User <b>{h(actor.first_name if actor else 'Unknown')}</b> "
+                            f"(<code>{actor.id if actor else 0}</code>) attempted to add the bot to group:\n"
+                            f"• <b>Title :</b> {h(chat.title or 'Untitled')}\n"
+                            f"• <b>ID Telegram :</b> <code>{chat.id}</code>\n\n"
+                            "🛡️ <i>The bot immediately left the group to protect your privacy.</i>"
+                        )
+                    await context.bot.send_message(
+                        chat_id=admin_id,
+                        text=unauth_text,
                         parse_mode=PM,
                     )
                 except Exception:
@@ -3010,19 +3160,30 @@ async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_T
         )
 
         if admin_id:
+            adm_lang = get_user_language(admin_id)
             try:
+                alert_text = (
+                    "👋 <b>Nouveau Groupe Détecté !</b>\n\n"
+                    f"Le bot a été ajouté au groupe <b>{h(chat.title or 'Sans titre')}</b>.\n"
+                    f"• <b>ID Telegram :</b> <code>{chat.id}</code>\n"
+                    f"• <b>Mode Actuel :</b> 🔇 <b>Écoute Seule (Silencieux)</b>\n"
+                    f"• <b>Lecture :</b> ✅ Activée | <b>Écriture :</b> ⛔ Bloquée\n\n"
+                    "🛡️ <i>En mode Écoute Seule (par défaut), le bot observe sans JAMAIS envoyer de message. "
+                    "Vous pouvez lui assigner n'importe quelle mission personnalisée (surveillance, alertes, résumés, réponses).</i>\n\n"
+                    "Choisissez la configuration initiale :"
+                    if adm_lang == "fr" else
+                    "👋 <b>New Group Detected!</b>\n\n"
+                    f"The bot was added to group <b>{h(chat.title or 'Untitled')}</b>.\n"
+                    f"• <b>Telegram ID:</b> <code>{chat.id}</code>\n"
+                    f"• <b>Current Mode:</b> 🔇 <b>Stealth Listening (Silent)</b>\n"
+                    f"• <b>Read:</b> ✅ Enabled | <b>Write:</b> ⛔ Blocked\n\n"
+                    "🛡️ <i>In Stealth Listening mode (default), the bot observes without EVER sending messages. "
+                    "You can assign any custom mission to the agent anytime.</i>\n\n"
+                    "Choose initial configuration:"
+                )
                 await context.bot.send_message(
                     chat_id=admin_id,
-                    text=(
-                        "👋 <b>Nouveau Groupe Détecté !</b>\n\n"
-                        f"Le bot a été ajouté au groupe <b>{h(chat.title or 'Sans titre')}</b>.\n"
-                        f"• <b>ID Groupe :</b> <code>{chat.id}</code>\n"
-                        f"• <b>Mode Actuel :</b> 🔇 <b>Écoute Seule (Silencieux)</b>\n"
-                        f"• <b>Suivi Scolaire & Devoirs :</b> ✅ Activé\n\n"
-                        "🛡️ <i>En mode Écoute Seule, le bot lit les messages pour détecter les devoirs et cours "
-                        "sans JAMAIS envoyer de message ni de notification d'erreur dans le groupe.</i>\n\n"
-                        "Choisissez comment configurer ce groupe :"
-                    ),
+                    text=alert_text,
                     reply_markup=get_new_group_alert_keyboard(chat.id),
                     parse_mode=PM,
                 )
@@ -3135,8 +3296,8 @@ def main():
     app.add_handler(CommandHandler("services", cmd_services))
     app.add_handler(CommandHandler("autoheal", cmd_autoheal))
     app.add_handler(CommandHandler("groups", cmd_groups))
-    app.add_handler(CommandHandler("homework", cmd_homework))
-    app.add_handler(CommandHandler("devoirs", cmd_homework))
+    app.add_handler(CommandHandler("language", cmd_language))
+    app.add_handler(CommandHandler("lang", cmd_language))
     app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.MY_CHAT_MEMBER))
 
     # Pre-register built-in custom commands (/goal, /grill_me, /plan, /boost, /teamwork, etc.)

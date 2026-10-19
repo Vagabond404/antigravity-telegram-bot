@@ -556,8 +556,8 @@ def get_settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
             InlineKeyboardButton("🕹️ Commandes (/commands)", callback_data="menu_commands"),
         ],
         [
-            InlineKeyboardButton("🏫 Groupes & École (/groups)", callback_data="menu_groups"),
-            InlineKeyboardButton("📚 Devoirs (/homework)", callback_data="menu_homework"),
+            InlineKeyboardButton("🏫 Groupes (/groups)", callback_data="menu_groups"),
+            InlineKeyboardButton("🌐 Langue / Language", callback_data="menu_language"),
         ],
         [
             InlineKeyboardButton("🔄 Maj Système & CLI (/update)", callback_data="sys_update:check"),
@@ -918,8 +918,10 @@ def get_group_detail_keyboard(chat_id: int, g: Dict[str, Any]) -> InlineKeyboard
     s_id = str(chat_id)
     mode = g.get("mode", "passive")
     is_auth = g.get("is_authorized", False)
-    school_on = g.get("school_tracking", True)
+    can_read = g.get("can_read", True)
+    can_write = g.get("can_write", False)
     status = g.get("status", "active")
+    msg_count = len(g.get("recent_messages", []))
 
     rows = []
     # Authorization toggle
@@ -936,9 +938,20 @@ def get_group_detail_keyboard(chat_id: int, g: Dict[str, Any]) -> InlineKeyboard
     else:
         rows.append([InlineKeyboardButton("🔇 Réactiver en Écoute Seule", callback_data=f"grp:mode:{s_id}:passive")])
 
-    # School tracking toggle
-    sch_label = "📚 Suivi Scolaire & Devoirs : ACTIF ✅" if school_on else "📚 Suivi Scolaire : DÉSACTIVÉ ❌"
-    rows.append([InlineKeyboardButton(sch_label, callback_data=f"grp:school:{s_id}")])
+    # Read / Write Permissions toggles
+    read_label = "👁️ Lecture : ACTIVÉE ✅" if can_read else "👁️ Lecture : DÉSACTIVÉE ❌"
+    write_label = "✍️ Écriture : AUTORISÉE ✅" if can_write else "✍️ Écriture : BLOQUÉE ⛔"
+    rows.append([
+        InlineKeyboardButton(read_label, callback_data=f"grp:perm:{s_id}:can_read"),
+        InlineKeyboardButton(write_label, callback_data=f"grp:perm:{s_id}:can_write"),
+    ])
+
+    # Custom Mission for Agent in this group
+    rows.append([InlineKeyboardButton("🎯 Définir une Mission pour ce Groupe", callback_data=f"grp:mission:{s_id}")])
+
+    # Recent Messages buffer inspection
+    if msg_count > 0:
+        rows.append([InlineKeyboardButton(f"📜 Voir les Derniers Messages ({msg_count})", callback_data=f"grp:history:{s_id}")])
 
     # Leave group action
     if status != "left":
@@ -954,10 +967,10 @@ def get_new_group_alert_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     s_id = str(chat_id)
     rows = [
         [
-            InlineKeyboardButton("🔇 Écoute Seule (Devoirs / Veille)", callback_data=f"grp:quick:{s_id}:passive"),
+            InlineKeyboardButton("🔇 Écoute Seule (100% Silencieux)", callback_data=f"grp:quick:{s_id}:passive"),
         ],
         [
-            InlineKeyboardButton("💬 Interactif (Répondre aux @tags)", callback_data=f"grp:quick:{s_id}:active"),
+            InlineKeyboardButton("💬 Interactif (Répondre aux @mentions)", callback_data=f"grp:quick:{s_id}:active"),
         ],
         [
             InlineKeyboardButton("⛔ Ignorer / Bloquer", callback_data=f"grp:quick:{s_id}:disabled"),
@@ -967,18 +980,14 @@ def get_new_group_alert_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def get_homework_keyboard(homework_list: List[Dict[str, Any]]) -> InlineKeyboardMarkup:
-    rows = []
-    for h in homework_list[:6]:
-        hw_id = h.get("id", "")
-        subj = h.get("subject", "Devoir")[:15]
-        due = h.get("due_date_label") or h.get("due_date", "")
-        btn_text = f"✅ Marquer fait : {subj} ({due})"
-        rows.append([InlineKeyboardButton(btn_text, callback_data=f"hw:done:{hw_id}")])
-
-    rows.append([
-        InlineKeyboardButton("🔄 Actualiser", callback_data="menu_homework"),
-        InlineKeyboardButton("⬅️ Paramètres", callback_data="menu_main"),
-    ])
-    rows.append([InlineKeyboardButton("❌ Fermer", callback_data="close_menu")])
+def get_language_selection_keyboard(current_lang: str = "en") -> InlineKeyboardMarkup:
+    check_en = " ✅" if current_lang == "en" else ""
+    check_fr = " ✅" if current_lang == "fr" else ""
+    rows = [
+        [
+            InlineKeyboardButton(f"🇬🇧 English (Default){check_en}", callback_data="set_lang:en"),
+            InlineKeyboardButton(f"🇫🇷 Français{check_fr}", callback_data="set_lang:fr"),
+        ],
+        [InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")],
+    ]
     return InlineKeyboardMarkup(rows)
