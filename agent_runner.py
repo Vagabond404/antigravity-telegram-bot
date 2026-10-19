@@ -31,6 +31,7 @@ from config import (
 from memory_manager import get_relevant_context, auto_extract_and_store_facts
 from group_manager import group_mgr
 from resource_governor import governor
+from expert_manager import expert_mgr
 
 logger = logging.getLogger("agent_runner")
 
@@ -134,6 +135,12 @@ RÈGLES DE COMMUNICATION & D'EXÉCUTION :
    - Tu disposes des outils natifs `invoke_subagent`, `define_subagent`, `manage_subagents` et `send_message`.
    - Pour les tâches complexes, de recherche multiple ou de développement parallèle, n'hésite pas à définir et lancer des sous-agents spécialisés en parallèle (`self`, `research`, ou des sous-agents sur mesure via `define_subagent`).
 """
+        try:
+            experts_prompt = expert_mgr.get_active_experts_prompt()
+            if experts_prompt:
+                prompt += f"\n{experts_prompt}\n"
+        except Exception as e:
+            logger.debug(f"Could not inject active experts prompt: {e}")
     if custom_instr:
         prompt += f"\n[INSTRUCTIONS PERSONNALISÉES DE L'ADMINISTRATEUR]\n{custom_instr}\n"
 

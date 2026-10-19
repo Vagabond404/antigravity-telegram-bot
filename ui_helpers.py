@@ -672,7 +672,37 @@ def get_agents_keyboard(settings: dict, available_agents: List[Dict[str, str]]) 
         label = f"🤖 {desc}{check}" if not name else f"🤖 {name} — {desc[:28]}{check}"
         rows.append([InlineKeyboardButton(label, callback_data=f"set_agent:{name}")])
 
+    rows.append([
+        InlineKeyboardButton("🎓 Gérer l'Équipe d'Experts (/experts)", callback_data="cmd_experts")
+    ])
     rows.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+    return InlineKeyboardMarkup(rows)
+
+
+def get_experts_keyboard(experts: Dict[str, Dict[str, Any]]) -> InlineKeyboardMarkup:
+    rows = []
+    for name, exp in experts.items():
+        disp = exp.get("display_name", name)
+        is_en = exp.get("enabled", True)
+        status_icon = "✅" if is_en else "❌"
+        rows.append([
+            InlineKeyboardButton(f"{disp} — {status_icon}", callback_data=f"expert_view:{name}")
+        ])
+    rows.append([
+        InlineKeyboardButton("🔄 Rafraîchir", callback_data="cmd_experts"),
+        InlineKeyboardButton("⬅️ Centre de Contrôle", callback_data="menu_main"),
+    ])
+    return InlineKeyboardMarkup(rows)
+
+
+def get_expert_detail_keyboard(name: str, expert: Dict[str, Any]) -> InlineKeyboardMarkup:
+    is_en = expert.get("enabled", True)
+    toggle_text = "❌ Désactiver cet expert" if is_en else "✅ Activer cet expert"
+    rows = [
+        [InlineKeyboardButton(toggle_text, callback_data=f"expert_toggle:{name}")],
+        [InlineKeyboardButton("🗑️ Supprimer cet expert", callback_data=f"expert_delete:{name}")],
+        [InlineKeyboardButton("⬅️ Retour à l'équipe d'experts", callback_data="cmd_experts")],
+    ]
     return InlineKeyboardMarkup(rows)
 
 

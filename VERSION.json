@@ -1,7 +1,7 @@
 {
-  "bot_version": "4.3.0",
+  "bot_version": "4.4.0",
   "min_agy_version": "1.3.0",
   "repository": "https://github.com/Vagabond404/antigravity-telegram-bot.git",
   "branch": "main",
-  "changelog": "Default English localization with automatic dynamic language detection (/language, i18n), and universal custom agent group missions with message buffer history & granular read/write permissions (/groups)."
+  "changelog": "Multi-image album debouncing (single aggregated prompt for albums), and persistent custom specialized expert subagents (/experts, /subagents, expert_manager) autonomously invocable by the main agent."
 }

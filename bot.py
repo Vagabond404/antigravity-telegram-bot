@@ -72,6 +72,7 @@ from auth_manager import (
     ROLES_DESCRIPTION,
 )
 from group_manager import group_mgr, MODE_PASSIVE, MODE_ACTIVE, MODE_DISABLED
+from expert_manager import expert_mgr
 from i18n import t, detect_and_set_language, get_user_language, set_user_language, DEFAULT_LANGUAGE
 from resource_governor import governor
 from ui_helpers import (
@@ -89,6 +90,8 @@ from ui_helpers import (
     get_timeout_selection_keyboard,
     get_verbosity_selection_keyboard,
     get_agents_keyboard,
+    get_experts_keyboard,
+    get_expert_detail_keyboard,
     get_mcp_keyboard,
     get_mcp_catalog_keyboard,
     get_plugins_keyboard,
@@ -564,6 +567,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• <code>/groups</code> : Gérer les groupes, permissions de lecture/écriture &amp; missions sur-mesure\n"
             "• <code>/language</code> : Changer la langue d'interface (🇬🇧 English / 🇫🇷 Français)\n\n"
             "<b>🚀 Workflows Spéciaux &amp; Multi-Agents :</b>\n"
+            "• <code>/experts</code> : Gérer l'équipe de sous-agents experts spécialisés (Maths, Code, Anglais, etc.)\n"
             "• <code>/goal &lt;objectif&gt;</code> : Exécution autonome longue durée jusqu'à 100%\n"
             "• <code>/teamwork &lt;mission&gt;</code> : Déployer une équipe de sous-agents en parallèle\n"
             "• <code>/boost &lt;problème&gt;</code> : Réflexion maximale (<code>max</code>) multi-perspectives\n"
@@ -596,6 +600,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• <code>/groups</code>: Manage groups, read/write permissions &amp; custom missions\n"
             "• <code>/language</code>: Change bot interface language (🇬🇧 English / 🇫🇷 Français)\n\n"
             "<b>🚀 Special Workflows &amp; Multi-Agent Swarms:</b>\n"
+            "• <code>/experts</code>: Manage custom specialized expert subagents (Math, Code, English, etc.)\n"
             "• <code>/goal &lt;task&gt;</code>: Autonomous long-running task until 100% complete\n"
             "• <code>/teamwork &lt;mission&gt;</code>: Deploy parallel team of autonomous subagents\n"
             "• <code>/boost &lt;problem&gt;</code>: Deep multi-perspective reasoning with max thinking\n"
@@ -713,6 +718,43 @@ async def cmd_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "des sous-agents spécialisés en parallèle (recherche, code, test) et afficher leur progression en direct !</i>"
     )
     await update.message.reply_text(text, reply_markup=get_agents_keyboard(settings, agents), parse_mode=PM)
+
+
+async def cmd_experts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    uid = user.id if user else 0
+    if not is_admin(uid, user):
+        await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
+        return
+
+    experts = expert_mgr.load_experts()
+    active_count = sum(1 for e in experts.values() if e.get("enabled", True))
+    user_lang = get_user_language(uid)
+    if user_lang == "fr":
+        text = (
+            "🎓 <b>Équipe de Sous-Agents Experts Personnalisés</b>\n\n"
+            f"• <b>Experts configurés :</b> {len(experts)}\n"
+            f"• <b>Experts actifs :</b> {active_count}\n\n"
+            "<i>L'agent principal peut faire appel à ces experts spécialisés ou adopter leurs compétences "
+            "pour résoudre des questions pointues avec une rigueur absolue (Maths, Code, Langues, Sciences, etc.).</i>\n\n"
+            "💡 <i>Cliquez sur un expert ci-dessous pour voir sa persona détaillée ou l'activer/désactiver :</i>\n"
+            "✍️ <i>Pour en créer un nouveau, demandez simplement à l'agent : <code>Crée un sous-agent expert en histoire</code></i>"
+        )
+    else:
+        text = (
+            "🎓 <b>Custom Expert Subagents Team</b>\n\n"
+            f"• <b>Configured Experts:</b> {len(experts)}\n"
+            f"• <b>Active Experts:</b> {active_count}\n\n"
+            "<i>The main agent can invoke these specialized experts or adopt their persona "
+            "to answer advanced questions with maximum precision (Math, Code, Languages, Sciences, etc.).</i>\n\n"
+            "💡 <i>Click on an expert below to inspect their prompt or toggle them active/inactive:</i>\n"
+            "✍️ <i>To create a new one, simply tell the agent: <code>Create an expert subagent in physics</code></i>"
+        )
+    kb = get_experts_keyboard(experts)
+    if update.callback_query:
+        await safe_edit_message(update.callback_query.message, text, reply_markup=kb)
+    else:
+        await update.message.reply_text(text, reply_markup=kb, parse_mode=PM)
 
 
 async def cmd_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1411,6 +1453,107 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             f"✅ <b>Profil d'agent CLI défini sur :</b> <code>{h(ag_name or 'Principal (Auto)')}</code>",
             reply_markup=get_agents_keyboard(settings, agents),
         )
+        return
+
+    if data == "cmd_experts":
+        await query.answer()
+        experts = expert_mgr.load_experts()
+        active_count = sum(1 for e in experts.values() if e.get("enabled", True))
+        user_lang = get_user_language(uid)
+        if user_lang == "fr":
+            text = (
+                "🎓 <b>Équipe de Sous-Agents Experts Personnalisés</b>\n\n"
+                f"• <b>Experts configurés :</b> {len(experts)}\n"
+                f"• <b>Experts actifs :</b> {active_count}\n\n"
+                "<i>L'agent principal peut faire appel à ces experts spécialisés ou adopter leurs compétences "
+                "pour résoudre des questions pointues avec une rigueur absolue (Maths, Code, Langues, Sciences, etc.).</i>\n\n"
+                "💡 <i>Cliquez sur un expert ci-dessous pour voir sa persona détaillée ou l'activer/désactiver :</i>\n"
+                "✍️ <i>Pour en créer un nouveau, demandez simplement à l'agent : <code>Crée un sous-agent expert en histoire</code></i>"
+            )
+        else:
+            text = (
+                "🎓 <b>Custom Expert Subagents Team</b>\n\n"
+                f"• <b>Configured Experts:</b> {len(experts)}\n"
+                f"• <b>Active Experts:</b> {active_count}\n\n"
+                "<i>The main agent can invoke these specialized experts or adopt their persona "
+                "to answer advanced questions with maximum precision (Math, Code, Languages, Sciences, etc.).</i>\n\n"
+                "💡 <i>Click on an expert below to inspect their prompt or toggle them active/inactive:</i>\n"
+                "✍️ <i>To create a new one, simply tell the agent: <code>Create an expert subagent in physics</code></i>"
+            )
+        await safe_edit_message(query.message, text, reply_markup=get_experts_keyboard(experts))
+        return
+
+    if data.startswith("expert_view:"):
+        exp_name = data.split(":", 1)[1]
+        exp = expert_mgr.get_expert(exp_name)
+        if not exp:
+            await query.answer("Expert introuvable.")
+            return
+        await query.answer()
+        disp = exp.get("display_name", exp_name)
+        dom = exp.get("domain", "")
+        role = exp.get("role", "")
+        prompt = exp.get("system_prompt", "")
+        st = "Actif ✅" if exp.get("enabled", True) else "Inactif ❌"
+        text = (
+            f"🎓 <b>Sous-Agent Expert : {h(disp)}</b>\n\n"
+            f"• <b>Identifiant :</b> <code>{h(exp_name)}</code>\n"
+            f"• <b>État :</b> {st}\n"
+            f"• <b>Domaine :</b> {h(dom)}\n"
+            f"• <b>Rôle :</b> {h(role)}\n\n"
+            f"📜 <b>Instructions Système (Persona) :</b>\n"
+            f"<blockquote>{h(prompt)}</blockquote>"
+        )
+        await safe_edit_message(query.message, text, reply_markup=get_expert_detail_keyboard(exp_name, exp))
+        return
+
+    if data.startswith("expert_toggle:"):
+        exp_name = data.split(":", 1)[1]
+        new_state = expert_mgr.toggle_expert(exp_name)
+        if new_state is None:
+            await query.answer("Expert introuvable.")
+            return
+        await query.answer(f"Expert {'activé ✅' if new_state else 'désactivé ❌'}")
+        exp = expert_mgr.get_expert(exp_name)
+        disp = exp.get("display_name", exp_name)
+        dom = exp.get("domain", "")
+        role = exp.get("role", "")
+        prompt = exp.get("system_prompt", "")
+        st = "Actif ✅" if exp.get("enabled", True) else "Inactif ❌"
+        text = (
+            f"🎓 <b>Sous-Agent Expert : {h(disp)}</b>\n\n"
+            f"• <b>Identifiant :</b> <code>{h(exp_name)}</code>\n"
+            f"• <b>État :</b> {st}\n"
+            f"• <b>Domaine :</b> {h(dom)}\n"
+            f"• <b>Rôle :</b> {h(role)}\n\n"
+            f"📜 <b>Instructions Système (Persona) :</b>\n"
+            f"<blockquote>{h(prompt)}</blockquote>"
+        )
+        await safe_edit_message(query.message, text, reply_markup=get_expert_detail_keyboard(exp_name, exp))
+        return
+
+    if data.startswith("expert_delete:"):
+        exp_name = data.split(":", 1)[1]
+        ok = expert_mgr.delete_expert(exp_name)
+        await query.answer("Expert supprimé ✅" if ok else "Expert introuvable.")
+        experts = expert_mgr.load_experts()
+        active_count = sum(1 for e in experts.values() if e.get("enabled", True))
+        user_lang = get_user_language(uid)
+        if user_lang == "fr":
+            text = (
+                "🎓 <b>Équipe de Sous-Agents Experts Personnalisés</b>\n\n"
+                f"• <b>Experts configurés :</b> {len(experts)}\n"
+                f"• <b>Experts actifs :</b> {active_count}\n\n"
+                "<i>L'expert a été retiré de la liste.</i>"
+            )
+        else:
+            text = (
+                "🎓 <b>Custom Expert Subagents Team</b>\n\n"
+                f"• <b>Configured Experts:</b> {len(experts)}\n"
+                f"• <b>Active Experts:</b> {active_count}\n\n"
+                "<i>The expert has been removed from the list.</i>"
+            )
+        await safe_edit_message(query.message, text, reply_markup=get_experts_keyboard(experts))
         return
 
     if data.startswith("set_mode:"):
@@ -2477,6 +2620,54 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 
+_media_group_buffers: Dict[str, Dict[str, Any]] = {}
+_media_group_lock = asyncio.Lock()
+
+
+async def _flush_media_group(mg_id: str, context: ContextTypes.DEFAULT_TYPE):
+    async with _media_group_lock:
+        buf = _media_group_buffers.pop(mg_id, None)
+    if not buf:
+        return
+
+    items = buf.get("items", [])
+    if not items:
+        return
+
+    primary_update = buf["primary_update"]
+    caption = (buf.get("caption") or "").strip() or "Analyse ces images et réponds à ma demande."
+
+    if len(items) == 1:
+        it = items[0]
+        prompt = (
+            f"[IMAGE FOURNIE PAR L'UTILISATEUR]\n"
+            f"Chemin local de l'image : `{it['path']}` (Dimensions: {it['width']}x{it['height']})\n"
+            f"Utilise ton outil `view_file` sur `{it['path']}` pour voir et analyser l'image.\n\n"
+            f"Instructions / Légende de l'utilisateur :\n{caption}"
+        )
+        header = f"📸 <i>Image reçue ({it['width']}×{it['height']})</i>\n\n"
+    else:
+        img_lines = []
+        for idx, it in enumerate(items, 1):
+            img_lines.append(f"- Image {idx} : `{it['path']}` (Résolution: {it['width']}×{it['height']})")
+        images_str = "\n".join(img_lines)
+        prompt = (
+            f"[ALBUM D'IMAGES FOURNI PAR L'UTILISATEUR ({len(items)} PHOTOS)]\n"
+            f"L'utilisateur t'a envoyé un groupe de {len(items)} images simultanément :\n"
+            f"{images_str}\n\n"
+            f"Utilise ton outil `view_file` pour examiner et comparer chacune de ces images selon les besoins.\n\n"
+            f"Instructions / Légende de l'utilisateur :\n{caption}"
+        )
+        header = f"📸 <i>Album reçu ({len(items)} photos)</i>\n\n"
+
+    await _process_user_turn(
+        primary_update,
+        context,
+        prompt,
+        header=header,
+    )
+
+
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
@@ -2494,19 +2685,57 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file = await photo.get_file()
     tmp_path = TEMP_DIR / f"photo_{photo.file_unique_id}.jpg"
     await file.download_to_drive(str(tmp_path))
-    caption = update.message.caption or "Analyse cette image et réponds à ma demande."
-    prompt = (
-        f"[IMAGE FOURNIE PAR L'UTILISATEUR]\n"
-        f"Chemin local de l'image : `{tmp_path.resolve()}` (Dimensions: {photo.width}x{photo.height})\n"
-        f"Utilise ton outil `view_file` sur `{tmp_path.resolve()}` pour voir et analyser l'image.\n\n"
-        f" Instructions / Légende de l'utilisateur :\n{caption}"
-    )
-    await _process_user_turn(
-        update,
-        context,
-        prompt,
-        header=f"📸 <i>Image reçue ({photo.width}×{photo.height})</i>\n\n",
-    )
+
+    mg_id = update.message.media_group_id
+    if not mg_id:
+        caption = update.message.caption or "Analyse cette image et réponds à ma demande."
+        prompt = (
+            f"[IMAGE FOURNIE PAR L'UTILISATEUR]\n"
+            f"Chemin local de l'image : `{tmp_path.resolve()}` (Dimensions: {photo.width}x{photo.height})\n"
+            f"Utilise ton outil `view_file` sur `{tmp_path.resolve()}` pour voir et analyser l'image.\n\n"
+            f" Instructions / Légende de l'utilisateur :\n{caption}"
+        )
+        await _process_user_turn(
+            update,
+            context,
+            prompt,
+            header=f"📸 <i>Image reçue ({photo.width}×{photo.height})</i>\n\n",
+        )
+        return
+
+    # Multi-image album aggregation (debounce 1.2s)
+    async with _media_group_lock:
+        if mg_id not in _media_group_buffers:
+            _media_group_buffers[mg_id] = {
+                "primary_update": update,
+                "caption": (update.message.caption or "").strip(),
+                "items": [],
+                "task": None,
+            }
+        buf = _media_group_buffers[mg_id]
+        if update.message.caption and not buf["caption"]:
+            buf["caption"] = update.message.caption.strip()
+            buf["primary_update"] = update
+
+        buf["items"].append({
+            "path": str(tmp_path.resolve()),
+            "width": photo.width,
+            "height": photo.height,
+        })
+
+        if buf["task"] and not buf["task"].done():
+            buf["task"].cancel()
+
+        async def _debounce_media_group(group_id: str):
+            try:
+                await asyncio.sleep(1.2)
+                await _flush_media_group(group_id, context)
+            except asyncio.CancelledError:
+                pass
+            except Exception as ex:
+                logger.error(f"Error in _debounce_media_group: {ex}")
+
+        buf["task"] = asyncio.create_task(_debounce_media_group(mg_id))
 
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2583,6 +2812,54 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
 
+_doc_group_buffers: Dict[str, Dict[str, Any]] = {}
+_doc_group_lock = asyncio.Lock()
+
+
+async def _flush_doc_group(mg_id: str, context: ContextTypes.DEFAULT_TYPE):
+    async with _doc_group_lock:
+        buf = _doc_group_buffers.pop(mg_id, None)
+    if not buf:
+        return
+
+    items = buf.get("items", [])
+    if not items:
+        return
+
+    primary_update = buf["primary_update"]
+    caption = (buf.get("caption") or "").strip() or "Analyse ces documents et réponds à ma demande."
+
+    if len(items) == 1:
+        it = items[0]
+        prompt = (
+            f"[DOCUMENT / FICHIER FOURNI PAR L'UTILISATEUR]\n"
+            f"Nom : `{it['name']}`\n"
+            f"Chemin local : `{it['path']}`\n\n"
+            f"Instructions / Légende de l'utilisateur :\n{caption}"
+        )
+        header = f"📄 <i>Fichier reçu : <code>{h(it['name'])}</code></i>\n\n"
+    else:
+        doc_lines = []
+        for idx, it in enumerate(items, 1):
+            doc_lines.append(f"- Fichier {idx} : `{it['name']}` (Chemin: `{it['path']}`)")
+        docs_str = "\n".join(doc_lines)
+        prompt = (
+            f"[GROUPE DE DOCUMENTS FOURNIS PAR L'UTILISATEUR ({len(items)} FICHIERS)]\n"
+            f"L'utilisateur t'a envoyé {len(items)} documents simultanément :\n"
+            f"{docs_str}\n\n"
+            f"Tu peux inspecter chacun de ces fichiers avec ton outil `view_file` selon les besoins.\n\n"
+            f"Instructions / Légende de l'utilisateur :\n{caption}"
+        )
+        header = f"📁 <i>Groupe de fichiers reçu ({len(items)} documents)</i>\n\n"
+
+    await _process_user_turn(
+        primary_update,
+        context,
+        prompt,
+        header=header,
+    )
+
+
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
@@ -2603,19 +2880,55 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dest_path = TEMP_DIR / safe_name
     await file.download_to_drive(str(dest_path))
 
-    caption = update.message.caption or f"Voici le fichier `{safe_name}`. Analyse-le et réponds à ma demande."
-    prompt = (
-        f"[DOCUMENT / FICHIER FOURNI PAR L'UTILISATEUR]\n"
-        f"Nom : `{safe_name}`\n"
-        f"Chemin local : `{dest_path.resolve()}`\n\n"
-        f"Instructions / Légende de l'utilisateur :\n{caption}"
-    )
-    await _process_user_turn(
-        update,
-        context,
-        prompt,
-        header=f"📄 <i>Fichier reçu : <code>{h(safe_name)}</code></i>\n\n",
-    )
+    mg_id = update.message.media_group_id
+    if not mg_id:
+        caption = update.message.caption or f"Voici le fichier `{safe_name}`. Analyse-le et réponds à ma demande."
+        prompt = (
+            f"[DOCUMENT / FICHIER FOURNI PAR L'UTILISATEUR]\n"
+            f"Nom : `{safe_name}`\n"
+            f"Chemin local : `{dest_path.resolve()}`\n\n"
+            f"Instructions / Légende de l'utilisateur :\n{caption}"
+        )
+        await _process_user_turn(
+            update,
+            context,
+            prompt,
+            header=f"📄 <i>Fichier reçu : <code>{h(safe_name)}</code></i>\n\n",
+        )
+        return
+
+    # Multi-document album aggregation (debounce 1.2s)
+    async with _doc_group_lock:
+        if mg_id not in _doc_group_buffers:
+            _doc_group_buffers[mg_id] = {
+                "primary_update": update,
+                "caption": (update.message.caption or "").strip(),
+                "items": [],
+                "task": None,
+            }
+        buf = _doc_group_buffers[mg_id]
+        if update.message.caption and not buf["caption"]:
+            buf["caption"] = update.message.caption.strip()
+            buf["primary_update"] = update
+
+        buf["items"].append({
+            "path": str(dest_path.resolve()),
+            "name": safe_name,
+        })
+
+        if buf["task"] and not buf["task"].done():
+            buf["task"].cancel()
+
+        async def _debounce_doc_group(group_id: str):
+            try:
+                await asyncio.sleep(1.2)
+                await _flush_doc_group(group_id, context)
+            except asyncio.CancelledError:
+                pass
+            except Exception as ex:
+                logger.error(f"Error in _debounce_doc_group: {ex}")
+
+        buf["task"] = asyncio.create_task(_debounce_doc_group(mg_id))
 
 
 # =============================================================================
@@ -3277,6 +3590,8 @@ def main():
     app.add_handler(CommandHandler("effort", cmd_effort))
     app.add_handler(CommandHandler("mode", cmd_mode))
     app.add_handler(CommandHandler("agents", cmd_agents))
+    app.add_handler(CommandHandler("experts", cmd_experts))
+    app.add_handler(CommandHandler("subagents", cmd_experts))
     app.add_handler(CommandHandler("sessions", cmd_sessions))
     app.add_handler(CommandHandler("mcp", cmd_mcp))
     app.add_handler(CommandHandler("plugins", cmd_plugins))
