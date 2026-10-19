@@ -31,33 +31,38 @@ FRENCH_DAYS = {
 }
 
 SUBJECT_PATTERNS = {
-    "Mathématiques": [r"\bmaths?\b", r"\bmath[eé]matiques?\b", r"\balg[eè]bre\b", r"\bg[eé]om[eé]trie\b"],
-    "Français": [r"\bfran[cç]ais\b", r"\blitt[eé]rature\b", r"\bgrammaire\b", r"\borthographe\b"],
-    "Histoire-Géo": [r"\bhistoire\b", r"\bg[eé]o(?:graphie)?\b", r"\bhg\b", r"\bemc\b"],
-    "Physique-Chimie": [r"\bphysique\b", r"\bchimie\b", r"\bpc\b", r"\bsciences\s+physiques\b"],
-    "SVT": [r"\bsvt\b", r"\bbiologie\b", r"\bg[eé]ologie\b", r"\bsciences\s+de\s+la\s+vie\b"],
-    "Anglais": [r"\banglais\b", r"\benglish\b"],
+    "Mathématiques": [r"\bmaths?\b", r"\bmath[eé]matiques?\b", r"\bmathematics\b", r"\balg[eè]bre\b", r"\balgebra\b", r"\bg[eé]om[eé]trie\b", r"\bgeometry\b"],
+    "Français": [r"\bfran[cç]ais\b", r"\bfrench\b", r"\blitt[eé]rature\b", r"\bgrammaire\b", r"\borthographe\b"],
+    "Histoire-Géo": [r"\bhistoire\b", r"\bhistory\b", r"\bg[eé]o(?:graphie)?\b", r"\bgeography\b", r"\bhg\b", r"\bsocial\s+studies\b", r"\bemc\b"],
+    "Physique-Chimie": [r"\bphysique\b", r"\bphysics\b", r"\bchimie\b", r"\bchemistry\b", r"\bpc\b", r"\bsciences?\b"],
+    "SVT": [r"\bsvt\b", r"\bbiologie\b", r"\bbiology\b", r"\bg[eé]ologie\b", r"\bsciences\s+de\s+la\s+vie\b"],
+    "Anglais": [r"\banglais\b", r"\benglish\b", r"\blanguage\s+arts\b"],
+    "Khmer": [r"\bkhmer\b", r"\bcambodian\b"],
     "Espagnol": [r"\bespagnol\b", r"\bspanish\b"],
     "Allemand": [r"\ballemand\b", r"\bgerman\b"],
     "Philosophie": [r"\bphilo(?:sophie)?\b"],
-    "SES": [r"\bses\b", r"\b[eé]conomie\b", r"\bsocio(?:logie)?\b"],
-    "Technologie": [r"\btechno(?:logie)?\b", r"\binformatique\b", r"\bnsi\b", r"\bsnt\b"],
-    "EPS": [r"\beps\b", r"\bsport\b"],
-    "Arts Plastiques": [r"\barts?\s+plastiques?\b", r"\bdessin\b"],
-    "Musique": [r"\bmusique\b", r"\bchant\b"],
+    "SES": [r"\bses\b", r"\b[eé]conomie\b", r"\beconomics\b", r"\bsocio(?:logie)?\b"],
+    "Technologie / Info": [r"\btechno(?:logie)?\b", r"\binformatique\b", r"\bict\b", r"\bcomputer\b", r"\bnsi\b", r"\bsnt\b"],
+    "EPS": [r"\beps\b", r"\bsport\b", r"\bpe\b", r"\bphysical\s+education\b"],
+    "Arts": [r"\barts?\s+plastiques?\b", r"\bdessin\b", r"\bart\b"],
+    "Musique": [r"\bmusique\b", r"\bmusic\b"],
 }
 
 HW_TRIGGER_WORDS = [
     "devoir", "devoirs", "dm", "ds", "dst", "exercice", "exercices",
     "exos", "exo", "pour demain", "à rendre", "a rendre", "évaluation",
     "evaluation", "interro", "interrogation", "contrôle", "controle",
-    "faire pour", "réviser", "reviser", "leçon à apprendre", "lecon a apprendre"
+    "faire pour", "réviser", "reviser", "leçon à apprendre", "lecon a apprendre",
+    "homework", "hw", "assignment", "assignments", "task", "quiz", "test",
+    "exam", "due tomorrow", "due", "to submit", "for tomorrow"
 ]
 
 LESSON_TRIGGER_WORDS = [
     "aujourd'hui", "aujourdhui", "on a fait", "nous avons fait",
     "cours du", "chapitre", "leçon", "lecon", "thème", "theme",
-    "au programme", "notions vues", "résumé du cours", "resume du cours"
+    "au programme", "notions vues", "résumé du cours", "resume du cours",
+    "today's lesson", "today's lessons", "updates for today", "lessons",
+    "lesson", "review", "subject", "+subject"
 ]
 
 

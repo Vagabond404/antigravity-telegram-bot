@@ -2179,15 +2179,13 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
         if await _handle_pending_admin_input(update, context, prompt):
             return
 
-        # Check if user forwarded a message from a group/channel to register it
-        fwd_chat = None
-        if update.message.forward_from_chat:
-            fwd_chat = update.message.forward_from_chat
-        elif hasattr(update.message, "forward_origin") and update.message.forward_origin:
-            origin = update.message.forward_origin
-            fwd_chat = getattr(origin, "chat", None) or getattr(origin, "sender_chat", None)
+        # Check if user forwarded a message from a group/channel or teacher
+        fwd_chat = getattr(update.message, "forward_from_chat", None)
+        origin = getattr(update.message, "forward_origin", None)
+        if origin:
+            fwd_chat = getattr(origin, "chat", None) or getattr(origin, "sender_chat", None) or fwd_chat
 
-        if fwd_chat and fwd_chat.type in (ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL):
+        if fwd_chat and getattr(fwd_chat, "type", "") in (ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL):
             g_info, is_new = group_mgr.register_or_update_group(
                 chat_id=fwd_chat.id,
                 title=fwd_chat.title or f"Groupe {fwd_chat.id}",
@@ -2215,6 +2213,34 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
                 parse_mode=PM,
             )
             return
+
+        # If forwarded from a teacher/user in private, directly index the lesson/homework
+        if origin and prompt:
+            sender_name = ""
+            if hasattr(origin, "sender_user") and origin.sender_user:
+                sender_name = origin.sender_user.first_name or ""
+            elif hasattr(origin, "sender_user_name"):
+                sender_name = origin.sender_user_name or ""
+
+            detected = school_mgr.analyze_incoming_message(
+                text=prompt,
+                sender_name=sender_name or "Professeur",
+                chat_title="Groupe École (Transféré)",
+                chat_id=0,
+            )
+            if detected:
+                parts = ["📖 <b>Contenu Scolaire Enregistré avec Succès !</b>\n"]
+                if detected.get("lesson"):
+                    les = detected["lesson"]
+                    parts.append(f"• <b>Matière :</b> {h(les.get('subject', 'Général'))}")
+                    parts.append(f"• <b>Résumé du Cours :</b>\n<blockquote>{h(les.get('summary', '')[:250])}</blockquote>\n")
+                if detected.get("homework"):
+                    hw = detected["homework"]
+                    parts.append(f"• 📚 <b>Devoir :</b> [{h(hw.get('subject', ''))}] Pour <code>{h(hw.get('due_date_label', 'bientôt'))}</code>")
+                    parts.append(f"• <b>Détails :</b>\n<blockquote>{h(hw.get('description', '')[:250])}</blockquote>\n")
+                parts.append("💡 <i>Tapez /homework pour voir vos devoirs ou demandez-moi de vous expliquer ce cours !</i>")
+                await update.message.reply_text("\n".join(parts), parse_mode=PM)
+                return
 
         if prompt.startswith("/"):
             parts = prompt.split(maxsplit=1)
