@@ -135,3 +135,81 @@ def test_migrate_from_custom_experts(temp_registry):
     assert "génomique" in bio["instructions"].lower()
 
     temp_json.unlink(missing_ok=True)
+
+
+def test_extract_agent_proposal_frontmatter():
+    from agent_registry import extract_agent_proposal
+
+    text = """
+Voici ma proposition pour le nouvel agent :
+```agent_proposal
+---
+name: math_solver
+display_name: 🧮 Solveur Mathématique
+description: Résolution d'équations différentielles
+model: gemini-4-argon-medium
+tools:
+  - run_command
+  - view_file
+---
+Tu es un solveur d'équations mathématiques formelles.
+```
+Confirmez-vous la création ?
+"""
+    result = extract_agent_proposal(text)
+    assert result is not None
+    name, meta, instr = result
+    assert name == "math_solver"
+    assert meta["display_name"] == "🧮 Solveur Mathématique"
+    assert meta["model"] == "gemini-4-argon-medium"
+    assert "run_command" in meta["tools"]
+    assert "Tu es un solveur" in instr
+
+
+def test_extract_agent_proposal_key_value():
+    from agent_registry import extract_agent_proposal
+
+    text = """
+```agent_proposal
+Nom: chef_cuisine
+Titre: 👨‍🍳 Chef Cuisinier
+Description: Recettes gastronomiques et accords mets-vins
+Modèle: auto
+Outils: search_web, view_file
+Instructions: Tu es un chef étoilé au guide Michelin.
+```
+"""
+    result = extract_agent_proposal(text)
+    assert result is not None
+    name, meta, instr = result
+    assert name == "chef_cuisine"
+    assert meta["display_name"] == "👨‍🍳 Chef Cuisinier"
+    assert "search_web" in meta["tools"]
+    assert "chef étoilé" in instr
+
+
+def test_import_nested_zip_archive(temp_registry):
+    import zipfile
+    temp_zip = Path(tempfile.mktemp(suffix=".zip"))
+    with zipfile.ZipFile(temp_zip, "w") as zf:
+        # Create nested file inside a folder
+        content = """---
+name: nested_agent
+display_name: 📁 Nested Subagent
+description: Nested inside folder in archive
+model: auto
+tools: [view_file]
+---
+Tu es un agent dans un sous-dossier.
+"""
+        zf.writestr("subfolder/nested/nested_agent.md", content)
+
+    ok, msg, _ = temp_registry.import_agent_file(temp_zip)
+    assert ok is True
+    assert "1 agent(s) importé(s)" in msg
+
+    agent = temp_registry.get_agent("nested_agent")
+    assert agent is not None
+    assert agent["display_name"] == "📁 Nested Subagent"
+    temp_zip.unlink(missing_ok=True)
+

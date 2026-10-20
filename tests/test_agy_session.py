@@ -5,6 +5,7 @@ tool description generation, and session lifecycle management.
 """
 
 import json
+import asyncio
 import pytest
 from agy_session import AgySession, is_quota_error
 
@@ -65,3 +66,41 @@ def test_session_state_reset():
     assert session.active_conversation_id is None
     assert session.session_total_tokens == 0
     assert session.session_turns == 0
+
+
+def test_wait_for_init_event_with_stashed_items():
+    async def _run():
+        session = AgySession()
+        # Put a non-init item first, then init, then another item
+        await session._event_queue.put({"event": "raw_output", "text": "Starting Antigravity..."})
+        await session._event_queue.put({"event": "init", "conversation_id": "conv-test-999"})
+        await session._event_queue.put({"event": "step_update", "step_update": {"state": "ACTIVE"}})
+
+        init_evt = await session._wait_for_init_event(timeout=2.0)
+        assert init_evt is not None
+        assert init_evt["event"] == "init"
+        assert init_evt["conversation_id"] == "conv-test-999"
+
+        # Verify stashed non-init item is still in queue
+        item1 = await session._event_queue.get()
+        assert item1["event"] in ("raw_output", "step_update")
+
+    asyncio.run(_run())
+
+
+def test_wait_for_init_event_timeout_preserves_queue():
+    async def _run():
+        session = AgySession()
+        await session._event_queue.put({"event": "raw_output", "text": "No init event here"})
+
+        # Wait with short timeout
+        init_evt = await session._wait_for_init_event(timeout=0.2)
+        assert init_evt is None
+
+        # Verify the item is still in queue
+        item = await session._event_queue.get()
+        assert item["event"] == "raw_output"
+
+    asyncio.run(_run())
+
+

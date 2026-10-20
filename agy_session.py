@@ -224,22 +224,29 @@ class AgySession:
             return False
 
     async def _wait_for_init_event(self, timeout: float = 15.0) -> Optional[dict]:
-        """Read until the first 'init' event or timeout."""
+        """Read until the first 'init' event or timeout, stashing non-init items."""
         t_end = asyncio.get_event_loop().time() + timeout
+        stash: List[dict] = []
+        found_init = None
         while asyncio.get_event_loop().time() < t_end:
             try:
-                item = await asyncio.wait_for(self._event_queue.get(), timeout=1.0)
+                item = await asyncio.wait_for(self._event_queue.get(), timeout=0.5)
                 if item is None:
                     break
                 if item.get("event") == "init":
-                    return item
-                # Put back non-init items
-                await self._event_queue.put(item)
+                    found_init = item
+                    break
+                stash.append(item)
             except asyncio.TimeoutError:
                 if not self.is_alive:
                     break
                 continue
-        return None
+
+        # Put back non-init items so they are processed in order
+        for it in stash:
+            await self._event_queue.put(it)
+
+        return found_init
 
     async def _stdout_loop(self, proc: asyncio.subprocess.Process):
         """Continuously read NDJSON lines from stdout and dispatch to queue."""

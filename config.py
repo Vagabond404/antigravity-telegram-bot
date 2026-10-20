@@ -147,7 +147,7 @@ TURN_SENT_FILES_FILE = TEMP_DIR / "tg_turn_sent_files.json"
 DEFAULT_SETTINGS: Dict[str, Any] = {
     "agent_name": os.getenv("AGENT_NAME", "Antigravity Agent"),
     "mode": "auto-approve",           # "auto-approve" (--dangerously-skip-permissions), "accept-edits", "plan"
-    "model": "gemini-4-argon-medium", # Dynamically synced with `agy models`
+    "model": "auto",                  # Dynamically synced with `agy models` (auto-routes flash for speed / argon for code)
     "effort": "auto",                 # "auto", "low", "medium", "high", "xhigh", "max"
     "timeout": 600,                   # Timeout in seconds (0 = infinite)
     "sandbox": False,                 # Run with --sandbox terminal restrictions

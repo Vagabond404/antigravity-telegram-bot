@@ -616,7 +616,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• <code>/groups</code>: Manage groups, read/write permissions &amp; custom missions\n"
             "• <code>/language</code>: Change bot interface language (🇬🇧 English / 🇫🇷 Français)\n\n"
             "<b>🚀 Special Workflows &amp; Multi-Agent Swarms:</b>\n"
-            "• <code>/experts</code>: Manage custom specialized expert subagents (Math, Code, English, etc.)\n"
+            "• <code>/agents</code>: Manage specialized subagents team (Research, Code, 3D...), import/export\n"
             "• <code>/goal &lt;task&gt;</code>: Autonomous long-running task until 100% complete\n"
             "• <code>/teamwork &lt;mission&gt;</code>: Deploy parallel team of autonomous subagents\n"
             "• <code>/boost &lt;problem&gt;</code>: Deep multi-perspective reasoning with max thinking\n"
@@ -3462,20 +3462,48 @@ async def _process_user_turn(
 
             chunks = smart_split_html(final_html)
 
+            # Conversational subagent creation detection and confirmation
+            proposal_markup = None
+            if is_success and is_private_chat(update) and is_admin(chat_id, update.effective_user):
+                from agent_registry import extract_agent_proposal
+                proposal = extract_agent_proposal(response_text)
+                if proposal:
+                    p_name, p_meta, p_instr = proposal
+                    autonomy = active_settings.get("agent_creation_autonomy", "ask")
+                    if autonomy == "auto":
+                        ok, msg = agent_registry.save_agent(p_name, p_meta, p_instr)
+                        if ok:
+                            notice = (
+                                f"\n\n🎉 <b>Sous-Agent '<code>{h(p_name)}</code>' ({h(p_meta.get('display_name', p_name))}) "
+                                f"créé et activé automatiquement dans l'équipe d'orchestration !</b>"
+                            )
+                            chunks[-1] += notice
+                    elif autonomy == "ask":
+                        import uuid
+                        proposal_id = uuid.uuid4().hex[:8]
+                        _pending_agent_proposals[proposal_id] = {
+                            "name": p_name,
+                            "meta": p_meta,
+                            "instructions": p_instr,
+                        }
+                        proposal_markup = get_agent_creation_confirm_keyboard(proposal_id)
+
             edited = False
             if live_msg:
-                edited = await safe_edit_message(live_msg, chunks[0], reply_markup=None)
+                first_markup = proposal_markup if len(chunks) == 1 else None
+                edited = await safe_edit_message(live_msg, chunks[0], reply_markup=first_markup)
             if not edited:
-                # If editing failed (rate-limited, message deleted, etc.), send as new message!
-                await safe_reply_message(update.message, chunks[0])
+                first_markup = proposal_markup if len(chunks) == 1 else None
+                await safe_reply_message(update.message, chunks[0], reply_markup=first_markup)
                 if live_msg:
                     try:
                         await live_msg.edit_reply_markup(reply_markup=None)
                     except Exception:
                         pass
 
-            for chunk in chunks[1:]:
-                await safe_reply_message(update.message, chunk)
+            for idx, chunk in enumerate(chunks[1:], 1):
+                chunk_markup = proposal_markup if idx == len(chunks) - 1 else None
+                await safe_reply_message(update.message, chunk, reply_markup=chunk_markup)
 
             # Purge transient status messages sent via tg_send during this turn
             if TRANSIENT_MSGS_FILE.exists():

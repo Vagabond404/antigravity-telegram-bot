@@ -10,6 +10,7 @@ import re
 import sys
 import yaml
 import json
+import time
 import shutil
 import zipfile
 import logging
@@ -225,7 +226,7 @@ class AgentRegistry:
         agents = list(self.agents_dir.glob("*.md"))
         if not agents:
             return None
-        zip_path = config.TEMP_DIR / f"antigravity_agent_team_{int(asyncio_time())}.zip"
+        zip_path = config.TEMP_DIR / f"antigravity_agent_team_{int(time.time())}_{os.getpid()}.zip"
         try:
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for agent_file in agents:
@@ -245,14 +246,20 @@ class AgentRegistry:
 
         ext = file_path.suffix.lower()
         if ext == ".zip":
-            # Extract and import each .md
+            # Extract and import each .md (supporting nested subdirectories)
             imported_count = 0
-            extract_dir = config.TEMP_DIR / f"import_{int(asyncio_time())}"
+            extract_dir = config.TEMP_DIR / f"import_{int(time.time())}_{os.getpid()}"
             extract_dir.mkdir(parents=True, exist_ok=True)
             try:
                 with zipfile.ZipFile(file_path, "r") as zf:
-                    zf.extractall(extract_dir)
-                for md_file in extract_dir.glob("*.md"):
+                    for member in zf.namelist():
+                        # Prevent Zip-Slip directory traversal
+                        target = (extract_dir / member).resolve()
+                        if not str(target).startswith(str(extract_dir.resolve())):
+                            logger.warning(f"Zip slip attempt detected in archive: {member}")
+                            continue
+                        zf.extract(member, extract_dir)
+                for md_file in extract_dir.rglob("*.md"):
                     ok, _, _ = self.import_agent_file(md_file)
                     if ok:
                         imported_count += 1
@@ -261,6 +268,7 @@ class AgentRegistry:
                     return True, f"✅ {imported_count} agent(s) importé(s) avec succès depuis l'archive.", None
                 return False, "Aucun fichier d'agent .md valide trouvé dans l'archive.", None
             except Exception as e:
+                shutil.rmtree(extract_dir, ignore_errors=True)
                 return False, f"Erreur lors de l'ouverture de l'archive ZIP : {e}", None
 
         if ext != ".md":
@@ -426,3 +434,84 @@ def asyncio_time() -> float:
 
 
 agent_registry = AgentRegistry()
+
+
+def extract_agent_proposal(text: str) -> Optional[Tuple[str, Dict[str, Any], str]]:
+    """
+    Detect and extract an agent proposal block from orchestrator response text.
+    Matches blocks like:
+    ```agent_proposal
+    ---
+    name: math_expert
+    display_name: 🧮 Expert Mathématiques
+    description: Résolution d'équations
+    model: auto
+    tools: [search_web, view_file]
+    ---
+    Instructions...
+    ```
+    or key-value lines within ```agent_proposal ... ``` or ```agent ... ```.
+    Returns (clean_name, meta, instructions) or None.
+    """
+    if not text:
+        return None
+
+    patterns = [
+        r"```(?:agent_proposal|agent)\s*([\s\S]*?)```",
+        r"\[PROPOSITION_AGENT\]\s*([\s\S]*?)\[/PROPOSITION_AGENT\]",
+    ]
+    raw_block = ""
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            raw_block = m.group(1).strip()
+            break
+
+    if not raw_block:
+        return None
+
+    # Try frontmatter format
+    parsed = AgentRegistry._parse_agent_markdown(raw_block)
+    if parsed:
+        meta, instr = parsed
+        name = AgentRegistry._sanitize_name(meta.get("name", ""))
+        if name and instr:
+            return name, meta, instr
+
+    # Fallback to key-value parsing
+    lines = [ln.strip() for ln in raw_block.splitlines() if ln.strip()]
+    meta: Dict[str, Any] = {"model": "auto", "tools": ["search_web", "view_file"], "enabled": True}
+    name = ""
+    instr_collecting = False
+    instr_lines = []
+
+    for line in lines:
+        if instr_collecting:
+            instr_lines.append(line)
+            continue
+        lower = line.lower()
+        if lower.startswith("nom:") or lower.startswith("name:"):
+            name = line.split(":", 1)[1].strip()
+        elif lower.startswith("titre:") or lower.startswith("title:") or lower.startswith("display:"):
+            meta["display_name"] = line.split(":", 1)[1].strip()
+        elif lower.startswith("description:") or lower.startswith("desc:"):
+            meta["description"] = line.split(":", 1)[1].strip()
+        elif lower.startswith("modèle:") or lower.startswith("modele:") or lower.startswith("model:"):
+            meta["model"] = line.split(":", 1)[1].strip()
+        elif lower.startswith("outils:") or lower.startswith("tools:"):
+            raw_tools = line.split(":", 1)[1].strip().strip("[]")
+            meta["tools"] = [t.strip().strip("'\"") for t in raw_tools.split(",") if t.strip()]
+        elif lower.startswith("instructions:") or lower.startswith("prompt:"):
+            instr_collecting = True
+            rem = line.split(":", 1)[1].strip()
+            if rem:
+                instr_lines.append(rem)
+        else:
+            instr_lines.append(line)
+
+    instructions = "\n".join(instr_lines).strip()
+    clean_name = AgentRegistry._sanitize_name(name or meta.get("display_name", ""))
+    if clean_name and instructions:
+        return clean_name, meta, instructions
+
+    return None
