@@ -600,6 +600,7 @@ def get_model_selection_keyboard(
             display_btn = f"{label[:45]}{check}"
         keyboard.append([InlineKeyboardButton(display_btn, callback_data=f"set_model:{mod_val}")])
 
+    keyboard.append([InlineKeyboardButton("📊 Voir Quotas & Utilisation (/quota)", callback_data="cmd_quota")])
     keyboard.append([InlineKeyboardButton("🔄 Rafraîchir depuis Antigravity CLI (agy models)", callback_data="refresh_models")])
     keyboard.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
     return InlineKeyboardMarkup(keyboard)

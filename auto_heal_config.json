@@ -7,7 +7,7 @@
       "name": "Bot Telegram Magma",
       "type": "systemd",
       "target": "antigravity-bot",
-      "enabled": true,
+      "enabled": false,
       "icon": "🤖"
     }
   }

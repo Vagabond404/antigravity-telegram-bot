@@ -36,10 +36,11 @@ from expert_manager import expert_mgr
 logger = logging.getLogger("agent_runner")
 
 DEFAULT_MODELS_LIST: List[Tuple[str, str]] = [
+    ("auto", "🤖 Auto (Routage Intelligent selon Quota & Tâche)"),
+    ("gemini-3.8-flash-medium", "Gemini 3.8 Flash (Medium)"),
     ("gemini-4-argon-medium", "Gemini 4 Argon (Medium)"),
     ("gemini-4-argon-high", "Gemini 4 Argon (High)"),
     ("gemini-4-argon-low", "Gemini 4 Argon (Low)"),
-    ("gemini-3.8-flash-medium", "Gemini 3.8 Flash (Medium)"),
     ("gemini-3.8-flash-high", "Gemini 3.8 Flash (High)"),
     ("gemini-3.8-flash-low", "Gemini 3.8 Flash (Low)"),
     ("claude-sonnet-5-5-medium", "Claude Sonnet 5.5 (Medium)"),
@@ -437,10 +438,19 @@ class AgentRunner:
 
         # Ensure we have up-to-date models list
         available_models = await fetch_available_models(force_refresh=False)
-        model_ids = [m[0] for m in available_models] or [m[0] for m in DEFAULT_MODELS_LIST]
+        model_ids = [m[0] for m in available_models if m[0] != "auto"] or [m[0] for m in DEFAULT_MODELS_LIST if m[0] != "auto"]
 
-        preferred_model = settings.get("model", "gemini-4-argon-medium")
-        if preferred_model not in model_ids and model_ids:
+        preferred_model = settings.get("model", "auto")
+        if preferred_model == "auto" or not preferred_model:
+            try:
+                from quota_manager import quota_mgr
+                chosen_model, reason = quota_mgr.select_optimal_model(prompt, model_ids)
+                logger.info(f"Dynamic model routing: {reason}")
+                candidate_models = [chosen_model] + [m for m in model_ids if m != chosen_model]
+            except Exception as e:
+                logger.debug(f"Auto-model selection fallback: {e}")
+                candidate_models = list(model_ids)
+        elif preferred_model not in model_ids and model_ids:
             # Keep preferred_model first in case it's a valid alias, then all discovered models
             candidate_models = [preferred_model] + [m for m in model_ids if m != preferred_model]
         else:
@@ -503,6 +513,11 @@ class AgentRunner:
                         logger.warning(
                             f"Quota limit reached on model '{current_model}'. Switching immediately to next fallback model..."
                         )
+                        try:
+                            from quota_manager import quota_mgr
+                            quota_mgr.record_quota_error(current_model, response_text)
+                        except Exception:
+                            pass
                         last_error = response_text
                         break
 
@@ -741,7 +756,7 @@ class AgentRunner:
                 nonlocal ui_dirty
                 while ui_updater_running:
                     try:
-                        await asyncio.sleep(1.5)
+                        await asyncio.sleep(2.5)
                         if on_update:
                             full_text = "".join(accumulated_text).strip()
                             await on_update(full_text, current_action)
@@ -869,6 +884,11 @@ class AgentRunner:
                                 model=model,
                                 tokens=total_tok,
                             )
+                            try:
+                                from quota_manager import quota_mgr
+                                quota_mgr.record_usage(model or "agy", total_tok)
+                            except Exception:
+                                pass
 
                         if status == "SUCCESS":
                             final_resp = res.get("response", "")

@@ -166,8 +166,15 @@ async def safe_edit_message(
         await msg.edit_text(display, parse_mode=parse_mode, reply_markup=reply_markup)
         return True
     except RetryAfter as ra:
-        await asyncio.sleep(min(float(ra.retry_after), 5.0))
-        return False
+        wait_secs = min(float(ra.retry_after), 6.0)
+        logger.warning(f"Telegram RetryAfter in safe_edit_message: waiting {wait_secs:.1f}s and retrying...")
+        await asyncio.sleep(wait_secs)
+        try:
+            await msg.edit_text(display, parse_mode=parse_mode, reply_markup=reply_markup)
+            return True
+        except Exception as retry_err:
+            logger.debug(f"RetryAfter edit retry failed: {retry_err}")
+            return False
     except Exception as e:
         err_str = str(e).lower()
         if "message is not modified" in err_str:
@@ -560,6 +567,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• <code>/update_cli</code> : Mettre à jour le binaire <code>agy</code>\n\n"
             "<b>💬 Sessions &amp; Exécution :</b>\n"
             "• <code>/status</code> : État système, version CLI, RAM/CPU et tokens utilisés\n"
+            "• <code>/quota</code> : Afficher la consommation et l'état des quotas de chaque modèle IA\n"
             "• <code>/sessions</code> : Reprendre une conversation précédente ou en créer une\n"
             "• <code>/clear</code> : Réinitialiser la session en cours\n"
             "• <code>/abort</code> : Stopper immédiatement l'exécution en cours\n\n"
@@ -593,6 +601,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• <code>/update_cli</code>: Update <code>agy</code> binary to latest version\n\n"
             "<b>💬 Sessions &amp; Execution:</b>\n"
             "• <code>/status</code>: System health, CLI version, RAM/CPU and token metrics\n"
+            "• <code>/quota</code>: Display AI model quota status, token usage and cooldowns\n"
             "• <code>/sessions</code>: Resume previous conversation or start a new one\n"
             "• <code>/clear</code>: Reset active conversation session\n"
             "• <code>/abort</code>: Immediately cancel currently running task\n\n"
@@ -677,6 +686,32 @@ async def cmd_models(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=get_model_selection_keyboard(settings.get("model", ""), models),
         parse_mode=PM,
     )
+
+
+async def cmd_quota(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    uid = user.id if user else 0
+    if not is_admin(uid, user):
+        await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
+        return
+    try:
+        from quota_manager import quota_mgr
+        user_lang = get_user_language(uid)
+        text = quota_mgr.format_quota_dashboard(user_lang=user_lang)
+    except Exception as e:
+        text = f"❌ <b>Erreur Quotas :</b> <code>{h(str(e))}</code>"
+
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🔄 Rafraîchir", callback_data="cmd_quota"),
+            InlineKeyboardButton("🧠 Choisir Modèle (/models)", callback_data="menu_model"),
+        ],
+        [InlineKeyboardButton("⬅️ Centre de Contrôle", callback_data="menu_main")],
+    ])
+    if update.callback_query:
+        await safe_edit_message(update.callback_query.message, text, reply_markup=kb)
+    else:
+        await update.message.reply_text(text, reply_markup=kb, parse_mode=PM)
 
 
 async def cmd_effort(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1432,6 +1467,24 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             format_settings_summary_html(settings),
             reply_markup=get_settings_keyboard(settings),
         )
+        return
+
+    if data == "cmd_quota":
+        await query.answer()
+        try:
+            from quota_manager import quota_mgr
+            user_lang = get_user_language(uid)
+            text = quota_mgr.format_quota_dashboard(user_lang=user_lang)
+        except Exception as e:
+            text = f"❌ <b>Erreur Quotas :</b> <code>{h(str(e))}</code>"
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🔄 Rafraîchir", callback_data="cmd_quota"),
+                InlineKeyboardButton("🧠 Choisir Modèle (/models)", callback_data="menu_model"),
+            ],
+            [InlineKeyboardButton("⬅️ Centre de Contrôle", callback_data="menu_main")],
+        ])
+        await safe_edit_message(query.message, text, reply_markup=kb)
         return
 
     if data == "menu_agents":
@@ -3250,10 +3303,17 @@ async def _process_user_turn(
 
             chunks = smart_split_html(final_html)
 
+            edited = False
             if live_msg:
-                await safe_edit_message(live_msg, chunks[0], reply_markup=None)
-            else:
-                live_msg = await safe_reply_message(update.message, chunks[0])
+                edited = await safe_edit_message(live_msg, chunks[0], reply_markup=None)
+            if not edited:
+                # If editing failed (rate-limited, message deleted, etc.), send as new message!
+                await safe_reply_message(update.message, chunks[0])
+                if live_msg:
+                    try:
+                        await live_msg.edit_reply_markup(reply_markup=None)
+                    except Exception:
+                        pass
 
             for chunk in chunks[1:]:
                 await safe_reply_message(update.message, chunk)
@@ -3604,6 +3664,9 @@ def main():
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("settings", cmd_settings))
     app.add_handler(CommandHandler("models", cmd_models))
+    app.add_handler(CommandHandler("model", cmd_models))
+    app.add_handler(CommandHandler("quota", cmd_quota))
+    app.add_handler(CommandHandler("quotas", cmd_quota))
     app.add_handler(CommandHandler("effort", cmd_effort))
     app.add_handler(CommandHandler("mode", cmd_mode))
     app.add_handler(CommandHandler("agents", cmd_agents))
