@@ -159,6 +159,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "workspace_dir": str(WORKSPACE_DIR),
     "extra_dirs": [],                 # Additional directories passed via --add-dir
     "custom_instructions": "",        # Optional custom system prompt instructions set from Telegram
+    "agent_creation_autonomy": "ask", # "ask" (prompt with buttons), "auto" (creates & notifies), "off" (blocked)
 }
 
 

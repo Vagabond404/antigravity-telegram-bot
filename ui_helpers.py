@@ -477,12 +477,15 @@ def format_settings_summary_html(settings: dict) -> str:
     else:
         t_str = f"{timeout // 60} min"
 
+    autonomy = settings.get("agent_creation_autonomy", "ask")
+    autonomy_badge = {"ask": "✋ Demander", "auto": "⚡ Auto", "off": "⛔ Off"}.get(autonomy, autonomy)
+
     lines = [
         f"🎛️ <b>Centre de Contrôle — {h(agent_name)}</b>\n",
         f"• 🧠 <b>Modèle IA :</b> <code>{h(model)}</code>",
         f"• 💡 <b>Réflexion (Effort) :</b> <code>{h(effort)}</code>",
         f"• 🛡️ <b>Mode d'exécution :</b> <code>{h(mode)}</code>",
-        f"• 🤝 <b>Multi-Agents :</b> {'🟢 Activé' if multi_agent else '🔴 Désactivé'} (Profil: <code>{h(agent_prof)}</code>)",
+        f"• 🤝 <b>Multi-Agents :</b> {'🟢 Activé' if multi_agent else '🔴 Désactivé'} | <b>Autonomie :</b> <code>{h(autonomy_badge)}</code>",
         f"• 📦 <b>Sandbox CLI :</b> {'🟢 Activé' if sandbox else '⚪ Désactivé'}",
         f"• ⏱️ <b>Timeout :</b> <code>{t_str}</code>",
         f"• 👁️ <b>Affichage Outils :</b> <code>{h(verbosity)}</code>",
@@ -504,6 +507,8 @@ def get_settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
     timeout = int(settings.get("timeout", 600))
     sandbox = bool(settings.get("sandbox", False))
     multi_agent = bool(settings.get("multi_agent", True))
+    autonomy = settings.get("agent_creation_autonomy", "ask")
+    autonomy_label = {"ask": "✋ Demander", "auto": "⚡ Auto", "off": "⛔ Off"}.get(autonomy, autonomy)
     verbosity = settings.get("verbosity", "normal")
     auto_files = bool(settings.get("auto_send_files", True))
 
@@ -532,7 +537,11 @@ def get_settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
             InlineKeyboardButton(f"🛡️ Mode : {mode_label}", callback_data="menu_mode"),
         ],
         [
-            InlineKeyboardButton(f"🤝 Multi-Agents : {'ON ✅' if multi_agent else 'OFF ❌'}", callback_data="menu_agents"),
+            InlineKeyboardButton(f"🤝 Multi-Agents : {'ON ✅' if multi_agent else 'OFF ❌'}", callback_data="toggle_multi_agent"),
+            InlineKeyboardButton("🤖 Équipe (/agents)", callback_data="cmd_agents"),
+        ],
+        [
+            InlineKeyboardButton(f"⚙️ Autonomie : {autonomy_label}", callback_data="cycle_autonomy"),
             InlineKeyboardButton(f"📦 Sandbox : {'ON 🔒' if sandbox else 'OFF 🔓'}", callback_data="toggle_sandbox"),
         ],
         [
@@ -655,28 +664,65 @@ def get_verbosity_selection_keyboard(current_verbosity: str) -> InlineKeyboardMa
 
 
 def get_agents_keyboard(settings: dict, available_agents: List[Dict[str, str]]) -> InlineKeyboardMarkup:
-    multi_on = bool(settings.get("multi_agent", True))
-    curr_prof = settings.get("agent_profile", "")
+    from agent_registry import agent_registry
+    agents = agent_registry.list_agents(include_disabled=True)
+    autonomy = settings.get("agent_creation_autonomy", "ask")
+    return get_subagents_team_keyboard(agents, autonomy)
 
-    rows = [
-        [
-            InlineKeyboardButton(
-                f"🤝 Orchestration Multi-Agents : {'ACTIVÉE ✅' if multi_on else 'DÉSACTIVÉE ❌'}",
-                callback_data="toggle_multi_agent",
-            )
-        ]
-    ]
-    for ag in available_agents[:8]:
+
+def get_subagents_team_keyboard(agents: List[Dict[str, Any]], autonomy: str = "ask") -> InlineKeyboardMarkup:
+    rows = []
+    autonomy_labels = {
+        "ask": "✋ Demander (Validation)",
+        "auto": "⚡ Auto (Création directe)",
+        "off": "⛔ Off (Désactivé)",
+    }
+    cur_auto_label = autonomy_labels.get(autonomy, autonomy)
+
+    for ag in agents:
         name = ag.get("name", "")
-        desc = ag.get("description", "")
-        check = " ✅" if name == curr_prof else ""
-        label = f"🤖 {desc}{check}" if not name else f"🤖 {name} — {desc[:28]}{check}"
-        rows.append([InlineKeyboardButton(label, callback_data=f"set_agent:{name}")])
+        disp = ag.get("display_name", name)
+        is_en = ag.get("enabled", True)
+        icon = "🟢" if is_en else "⚪"
+        model = ag.get("model", "auto")
+        rows.append([
+            InlineKeyboardButton(f"{icon} {disp} ({model})", callback_data=f"subagent_view:{name}")
+        ])
 
     rows.append([
-        InlineKeyboardButton("🎓 Gérer l'Équipe d'Experts (/experts)", callback_data="cmd_experts")
+        InlineKeyboardButton(f"⚙️ Autonomie Création : {cur_auto_label}", callback_data="cycle_autonomy")
+    ])
+    rows.append([
+        InlineKeyboardButton("➕ Créer un Agent", callback_data="subagent_create_prompt"),
+        InlineKeyboardButton("📥 Importer (.md/.zip)", callback_data="subagent_import_prompt"),
+    ])
+    rows.append([
+        InlineKeyboardButton("📤 Exporter l'Équipe (ZIP)", callback_data="subagent_export_all"),
+        InlineKeyboardButton("🔄 Rafraîchir", callback_data="cmd_agents"),
     ])
     rows.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+    return InlineKeyboardMarkup(rows)
+
+
+def get_subagent_detail_keyboard(name: str, agent: Dict[str, Any]) -> InlineKeyboardMarkup:
+    is_en = agent.get("enabled", True)
+    toggle_text = "⚪ Désactiver ce sous-agent" if is_en else "🟢 Activer ce sous-agent"
+    rows = [
+        [InlineKeyboardButton(toggle_text, callback_data=f"subagent_toggle:{name}")],
+        [InlineKeyboardButton("📤 Exporter ce fichier (.md)", callback_data=f"subagent_export:{name}")],
+        [InlineKeyboardButton("🗑️ Supprimer ce sous-agent", callback_data=f"subagent_delete:{name}")],
+        [InlineKeyboardButton("⬅️ Retour à l'équipe (/agents)", callback_data="cmd_agents")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def get_agent_creation_confirm_keyboard(temp_agent_id: str) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton("✅ Confirmer & Activer l'Agent", callback_data=f"agent_confirm_create:{temp_agent_id}"),
+            InlineKeyboardButton("❌ Annuler / Refuser", callback_data=f"agent_cancel_create:{temp_agent_id}"),
+        ]
+    ]
     return InlineKeyboardMarkup(rows)
 
 
