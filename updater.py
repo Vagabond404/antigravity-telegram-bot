@@ -46,6 +46,10 @@ PROTECTED_USER_FILES = [
     "pending_approvals.json",
     "incidents_history.json",
     "groups.json",
+    "model_quotas.json",
+    "custom_commands.json",
+    "custom_experts.json",
+    "auto_heal_config.json",
     "school_data.json",
 ]
 

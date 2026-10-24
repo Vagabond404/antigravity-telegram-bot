@@ -50,20 +50,41 @@ else:
 TEMP_DIR = BASE_DIR / "tmp"
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
-# Default Workspace directory for the agent
+# Default Compartmentalized Workspace directory for the agent (prevents touching outside personal folders)
 _raw_ws = os.getenv("WORKSPACE_DIR", "").strip()
 if _raw_ws and (not IS_WINDOWS or not _raw_ws.startswith("/")):
     _ws_candidate = Path(_raw_ws)
 else:
-    _ws_candidate = Path.home()
+    # Safe default: dedicated 'workspace' subfolder inside bot base directory
+    _ws_candidate = BASE_DIR / "workspace"
 
 try:
-    if not _ws_candidate.exists():
-        _ws_candidate = Path.home()
+    _ws_candidate.mkdir(parents=True, exist_ok=True)
 except Exception:
     _ws_candidate = BASE_DIR
 
 WORKSPACE_DIR = _ws_candidate.resolve()
+
+
+def is_path_safe_in_workspace(target_path: Path, workspace_dir: Optional[Path] = None, extra_dirs: Optional[List[Path]] = None) -> bool:
+    """
+    Verify whether target_path resides within the workspace or explicitly allowed extra directories.
+    Protects user's system from accidental edits/reads outside the project sandbox.
+    """
+    ws = (workspace_dir or WORKSPACE_DIR).resolve()
+    try:
+        resolved = target_path.resolve()
+        if resolved == ws or ws in resolved.parents:
+            return True
+        if extra_dirs:
+            for ed in extra_dirs:
+                ed_res = Path(ed).resolve()
+                if resolved == ed_res or ed_res in resolved.parents:
+                    return True
+        return False
+    except Exception:
+        return False
+
 
 
 def find_agy_binary(configured_path: Optional[str] = None) -> Optional[str]:

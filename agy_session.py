@@ -21,17 +21,16 @@ from config import BASE_DIR, IS_WINDOWS, find_agy_binary, record_conversation
 logger = logging.getLogger("agy_session")
 
 QUOTA_ERROR_KEYWORDS = [
-    "quota",
     "resource_exhausted",
-    "rate limit",
-    "429",
-    "exhausted",
-    "token limit",
-    "credits",
-    "out of tokens",
+    "resource has been exhausted",
     "quota exceeded",
     "insufficient_quota",
-    "overloaded",
+    "rate_limit_exceeded",
+    "rate limit exceeded",
+    "too many requests",
+    "token limit exhausted",
+    "token limit",
+    "429",
 ]
 
 
@@ -351,6 +350,7 @@ class AgySession:
         """
         async with self._lock:
             self._turn_in_progress = True
+            self._stderr_buffer.clear()
             try:
                 ok = await self.ensure_warm_process(settings)
                 if not ok or not self.is_alive or not self._process or not self._process.stdin:
@@ -496,7 +496,13 @@ class AgySession:
                                 )
                                 try:
                                     from quota_manager import quota_mgr
-                                    quota_mgr.record_usage(self._current_model or "agy", total_tok)
+                                    quota_mgr.record_usage(
+                                        model=self._current_model or "agy",
+                                        total_tokens=total_tok,
+                                        input_tokens=int(usage.get("input_tokens", 0)),
+                                        output_tokens=int(usage.get("output_tokens", 0)),
+                                        thinking_tokens=int(usage.get("thinking_tokens", 0)),
+                                    )
                                 except Exception:
                                     pass
 
@@ -511,6 +517,8 @@ class AgySession:
                             elif status == "ERROR":
                                 err = res.get("error", "")
                                 if is_quota_error(err):
+                                    # Clear active conversation id on quota failure so fallback model doesn't inherit a corrupted trajectory
+                                    self._active_conversation_id = None
                                     return (err, False, True)
                                 return (f"Erreur Antigravity : {err}", False, False)
 

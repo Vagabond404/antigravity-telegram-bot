@@ -6,6 +6,10 @@ conversations.json
 pending_approvals.json
 incidents_history.json
 service_account.json
+model_quotas.json
+groups.json
+school_data.json
+workspace/
 *.pem
 *.key
 

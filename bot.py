@@ -109,6 +109,7 @@ from ui_helpers import (
     get_group_detail_keyboard,
     get_new_group_alert_keyboard,
     get_language_selection_keyboard,
+    get_usage_keyboard,
 )
 from memory_manager import (
     add_or_update_memory,
@@ -574,7 +575,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• <code>/update_cli</code> : Mettre à jour le binaire <code>agy</code>\n\n"
             "<b>💬 Sessions &amp; Exécution :</b>\n"
             "• <code>/status</code> : État système, version CLI, RAM/CPU et tokens utilisés\n"
-            "• <code>/quota</code> : Afficher la consommation et l'état des quotas de chaque modèle IA\n"
+            "• <code>/usage</code> (ou <code>/quota</code>) : Tableau de bord des quotas, consommation de tokens &amp; temps de recharge\n"
             "• <code>/sessions</code> : Reprendre une conversation précédente ou en créer une\n"
             "• <code>/clear</code> : Réinitialiser la session en cours\n"
             "• <code>/abort</code> : Stopper immédiatement l'exécution en cours\n\n"
@@ -608,7 +609,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• <code>/update_cli</code>: Update <code>agy</code> binary to latest version\n\n"
             "<b>💬 Sessions &amp; Execution:</b>\n"
             "• <code>/status</code>: System health, CLI version, RAM/CPU and token metrics\n"
-            "• <code>/quota</code>: Display AI model quota status, token usage and cooldowns\n"
+            "• <code>/usage</code> (or <code>/quota</code>): Quota dashboard, token usage breakdown &amp; recharge countdown\n"
             "• <code>/sessions</code>: Resume previous conversation or start a new one\n"
             "• <code>/clear</code>: Reset active conversation session\n"
             "• <code>/abort</code>: Immediately cancel currently running task\n\n"
@@ -695,30 +696,28 @@ async def cmd_models(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def cmd_quota(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_usage(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     uid = user.id if user else 0
     if not is_admin(uid, user):
-        await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
+        await update.message.reply_text("⛔ Commande réservée à l'administrateur." if get_user_language(uid) == "fr" else "⛔ Admin only command.")
         return
     try:
         from quota_manager import quota_mgr
         user_lang = get_user_language(uid)
-        text = quota_mgr.format_quota_dashboard(user_lang=user_lang)
+        text = quota_mgr.format_usage_dashboard(user_lang=user_lang)
     except Exception as e:
         text = f"❌ <b>Erreur Quotas :</b> <code>{h(str(e))}</code>"
 
-    kb = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("🔄 Rafraîchir", callback_data="cmd_quota"),
-            InlineKeyboardButton("🧠 Choisir Modèle (/models)", callback_data="menu_model"),
-        ],
-        [InlineKeyboardButton("⬅️ Centre de Contrôle", callback_data="menu_main")],
-    ])
+    kb = get_usage_keyboard(user_lang=user_lang)
     if update.callback_query:
         await safe_edit_message(update.callback_query.message, text, reply_markup=kb)
     else:
         await update.message.reply_text(text, reply_markup=kb, parse_mode=PM)
+
+
+cmd_quota = cmd_usage
+
 
 
 async def cmd_effort(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1438,21 +1437,62 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    if data == "cmd_quota":
+    if data in ("cmd_usage", "cmd_quota"):
         await query.answer()
-        try:
-            from quota_manager import quota_mgr
-            user_lang = get_user_language(uid)
-            text = quota_mgr.format_quota_dashboard(user_lang=user_lang)
-        except Exception as e:
-            text = f"❌ <b>Erreur Quotas :</b> <code>{h(str(e))}</code>"
-        kb = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("🔄 Rafraîchir", callback_data="cmd_quota"),
-                InlineKeyboardButton("🧠 Choisir Modèle (/models)", callback_data="menu_model"),
-            ],
-            [InlineKeyboardButton("⬅️ Centre de Contrôle", callback_data="menu_main")],
-        ])
+        from quota_manager import quota_mgr
+        user_lang = get_user_language(uid)
+        text = quota_mgr.format_usage_dashboard(user_lang=user_lang)
+        kb = get_usage_keyboard(user_lang=user_lang)
+        await safe_edit_message(query.message, text, reply_markup=kb)
+        return
+
+    if data == "usage_reset_cooldowns":
+        from quota_manager import quota_mgr
+        unblocked = quota_mgr.reset_cooldowns()
+        user_lang = get_user_language(uid)
+        alert_msg = (
+            f"✅ {unblocked} verrou(s) de quota réinitialisé(s) !"
+            if user_lang == "fr"
+            else f"✅ {unblocked} quota cooldown lock(s) reset!"
+        )
+        await query.answer(alert_msg, show_alert=True)
+        text = quota_mgr.format_usage_dashboard(user_lang=user_lang)
+        kb = get_usage_keyboard(user_lang=user_lang)
+        await safe_edit_message(query.message, text, reply_markup=kb)
+        return
+
+    if data == "usage_test_live":
+        user_lang = get_user_language(uid)
+        await query.answer(
+            "⚡ Test de connectivité token en cours..."
+            if user_lang == "fr"
+            else "⚡ Running live token connectivity test...",
+            show_alert=False,
+        )
+        test_settings = dict(settings)
+        test_settings["model"] = "gemini-3.8-flash-low"
+        test_settings["timeout"] = 30
+        resp_text, ok_test = await runner.run_prompt_stream(
+            prompt="Respond only: OK",
+            settings=test_settings,
+        )
+        from quota_manager import quota_mgr
+        if ok_test:
+            quota_mgr.reset_cooldowns()
+            alert_msg = (
+                "🟢 Connexion API réussie ! Tous les modèles sont opérationnels."
+                if user_lang == "fr"
+                else "🟢 API connection verified! All models operational."
+            )
+        else:
+            alert_msg = (
+                f"⚠️ Test incomplet : {resp_text[:100]}"
+                if user_lang == "fr"
+                else f"⚠️ Test incomplete: {resp_text[:100]}"
+            )
+        await query.answer(alert_msg, show_alert=True)
+        text = quota_mgr.format_usage_dashboard(user_lang=user_lang)
+        kb = get_usage_keyboard(user_lang=user_lang)
         await safe_edit_message(query.message, text, reply_markup=kb)
         return
 
@@ -3852,8 +3892,9 @@ def main():
     app.add_handler(CommandHandler("settings", cmd_settings))
     app.add_handler(CommandHandler("models", cmd_models))
     app.add_handler(CommandHandler("model", cmd_models))
-    app.add_handler(CommandHandler("quota", cmd_quota))
-    app.add_handler(CommandHandler("quotas", cmd_quota))
+    app.add_handler(CommandHandler("usage", cmd_usage))
+    app.add_handler(CommandHandler("quota", cmd_usage))
+    app.add_handler(CommandHandler("quotas", cmd_usage))
     app.add_handler(CommandHandler("effort", cmd_effort))
     app.add_handler(CommandHandler("mode", cmd_mode))
     app.add_handler(CommandHandler("agents", cmd_agents))

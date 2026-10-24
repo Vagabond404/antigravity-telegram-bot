@@ -162,3 +162,60 @@ def test_album_multi_image_prompt_consolidation():
     assert "- Image 3 : `/tmp/img3.jpg`" in consolidated_prompt
     assert "Compare ces 3 schémas techniques." in consolidated_prompt
 
+
+def test_workspace_compartmentalization_and_path_safety(tmp_path):
+    from config import is_path_safe_in_workspace
+
+    ws = tmp_path / "sandbox_ws"
+    ws.mkdir()
+    safe_file = ws / "subfolder" / "project.py"
+    safe_file.parent.mkdir()
+    safe_file.write_text("print('hello')")
+
+    outside_sensitive = tmp_path / "private_system_folder" / "passwords.txt"
+    outside_sensitive.parent.mkdir()
+    outside_sensitive.write_text("secret")
+
+    allowed_extra = tmp_path / "extra_shared_dir"
+    allowed_extra.mkdir()
+    allowed_extra_file = allowed_extra / "dataset.csv"
+    allowed_extra_file.write_text("1,2,3")
+
+    assert is_path_safe_in_workspace(safe_file, workspace_dir=ws) is True
+    assert is_path_safe_in_workspace(outside_sensitive, workspace_dir=ws) is False
+    assert is_path_safe_in_workspace(allowed_extra_file, workspace_dir=ws, extra_dirs=[allowed_extra]) is True
+
+
+def test_quota_manager_reset_cooldowns_and_usage_dashboard(tmp_path):
+    from quota_manager import QuotaManager
+
+    q_file = tmp_path / "model_quotas.json"
+    mgr = QuotaManager(filepath=q_file)
+
+    # Record usage
+    mgr.record_usage("gemini-3.8-flash-medium", total_tokens=150, input_tokens=100, output_tokens=50)
+    rec = mgr._get_model_record("gemini-3.8-flash-medium")
+    assert rec["tokens_today"] == 150
+    assert rec["requests_today"] == 1
+
+    # Simulate rate-limit error
+    mgr.record_quota_error("gemini-4-argon-medium", "429 Too Many Requests")
+    limited, rem = mgr.is_rate_limited("gemini-4-argon-medium")
+    assert limited is True
+    assert rem > 0
+
+    # Test reset_cooldowns
+    unblocked = mgr.reset_cooldowns()
+    assert unblocked >= 1
+    limited_after, _ = mgr.is_rate_limited("gemini-4-argon-medium")
+    assert limited_after is False
+
+    # Test format_usage_dashboard output
+    fr_dash = mgr.format_usage_dashboard("fr")
+    en_dash = mgr.format_usage_dashboard("en")
+    assert "Tableau de Bord" in fr_dash
+    assert "Cycle glissant (5h)" in fr_dash
+    assert "Dashboard" in en_dash
+    assert "Rolling 5h Cycle" in en_dash
+
+

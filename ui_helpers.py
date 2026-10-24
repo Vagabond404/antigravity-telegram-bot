@@ -609,10 +609,37 @@ def get_model_selection_keyboard(
             display_btn = f"{label[:45]}{check}"
         keyboard.append([InlineKeyboardButton(display_btn, callback_data=f"set_model:{mod_val}")])
 
-    keyboard.append([InlineKeyboardButton("📊 Voir Quotas & Utilisation (/quota)", callback_data="cmd_quota")])
+    keyboard.append([InlineKeyboardButton("📊 Voir Quotas & Utilisation (/usage)", callback_data="cmd_usage")])
     keyboard.append([InlineKeyboardButton("🔄 Rafraîchir depuis Antigravity CLI (agy models)", callback_data="refresh_models")])
     keyboard.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
     return InlineKeyboardMarkup(keyboard)
+
+
+def get_usage_keyboard(user_lang: str = "en") -> InlineKeyboardMarkup:
+    """Build interactive action buttons for the /usage dashboard."""
+    if user_lang == "fr":
+        btn_reset = "🔄 Réinitialiser les Verrous"
+        btn_test = "⚡ Tester la Connexion"
+        btn_models = "🎛️ Choisir un Modèle"
+        btn_refresh = "📊 Actualiser"
+    else:
+        btn_reset = "🔄 Reset Cooldown Locks"
+        btn_test = "⚡ Test Live Connection"
+        btn_models = "🎛️ Select AI Model"
+        btn_refresh = "📊 Refresh"
+
+    keyboard = [
+        [
+            InlineKeyboardButton(btn_reset, callback_data="usage_reset_cooldowns"),
+            InlineKeyboardButton(btn_test, callback_data="usage_test_live"),
+        ],
+        [
+            InlineKeyboardButton(btn_models, callback_data="menu_models"),
+            InlineKeyboardButton(btn_refresh, callback_data="cmd_usage"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
 
 
 def get_effort_selection_keyboard(current_effort: str) -> InlineKeyboardMarkup:

@@ -1,7 +1,7 @@
 {
-  "bot_version": "4.4.0",
+  "bot_version": "5.0.0",
   "min_agy_version": "1.3.0",
   "repository": "https://github.com/Vagabond404/antigravity-telegram-bot.git",
   "branch": "main",
-  "changelog": "Multi-image album debouncing (single aggregated prompt for albums), and persistent custom specialized expert subagents (/experts, /subagents, expert_manager) autonomously invocable by the main agent."
+  "changelog": "Antigravity Telegram Agent v5.0.0: Persistent stream-json warm session (zero cold start), full autonomous multi-agent orchestration team (/agents), interactive agent creation with button confirmation, /usage quota & rolling cycle dashboard with live test & reset, compartmentalized desktop workspace isolation, zero-data-loss safe self-updater, and production open-source readiness."
 }
