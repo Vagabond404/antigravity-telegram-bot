@@ -104,3 +104,17 @@ def test_wait_for_init_event_timeout_preserves_queue():
     asyncio.run(_run())
 
 
+def test_abort_clean_status():
+    async def _run():
+        session = AgySession()
+        session._turn_in_progress = True
+        # Abort the session
+        aborted = await session.abort()
+        assert aborted is True
+        assert session._is_aborted is True
+        assert session._turn_in_progress is False
+
+    asyncio.run(_run())
+
+
+

@@ -83,6 +83,7 @@ class AgySession:
         self._stderr_reader_task: Optional[asyncio.Task] = None
         self._event_queue: asyncio.Queue[Optional[dict]] = asyncio.Queue()
         self._stderr_buffer: List[str] = []
+        self._is_aborted: bool = False
 
     @property
     def is_alive(self) -> bool:
@@ -328,6 +329,7 @@ class AgySession:
 
     async def abort(self) -> bool:
         """Interrupt and abort current execution immediately."""
+        self._is_aborted = True
         if not self._turn_in_progress and not self.is_alive:
             return False
         logger.warning("User requested turn abort. Stopping persistent agy session...")
@@ -350,6 +352,7 @@ class AgySession:
         """
         async with self._lock:
             self._turn_in_progress = True
+            self._is_aborted = False
             self._stderr_buffer.clear()
             try:
                 ok = await self.ensure_warm_process(settings)
@@ -532,10 +535,16 @@ class AgySession:
                     if not ui_task.done():
                         ui_task.cancel()
 
+                if self._is_aborted:
+                    return ("🛑 Exécution interrompue par l'utilisateur.", False, False)
+
                 final_text = final_response or "".join(accumulated_text).strip()
                 if got_success or final_text:
                     self._has_active_session = True
                     return (final_text or "✅ Action exécutée avec succès.", True, False)
+
+                if self._is_aborted:
+                    return ("🛑 Exécution interrompue par l'utilisateur.", False, False)
 
                 stderr_text = "\n".join(self._stderr_buffer).strip()
                 err_msg = stderr_text or "Le processus agy s'est interrompu sans réponse."
@@ -544,10 +553,13 @@ class AgySession:
                 return (f"⚠️ Erreur CLI : {err_msg}", False, False)
 
             except Exception as e:
+                if self._is_aborted:
+                    return ("🛑 Exécution interrompue par l'utilisateur.", False, False)
                 logger.error(f"Exception during execute_turn: {e}", exc_info=True)
                 return (f"❌ Erreur inattendue : {e}", False, False)
             finally:
                 self._turn_in_progress = False
+                self._is_aborted = False
 
     @staticmethod
     def _format_tool_action(tool_name: str, tool_args: dict, prefix: str = "") -> str:

@@ -242,8 +242,12 @@ settings = load_settings()
 pending_admin_input: Dict[int, str] = {}
 _pending_agent_proposals: Dict[str, Dict[str, Any]] = {}
 
-# Turn execution lock & queue so concurrent messages or albums never collide or drop
+# Turn execution lock, queue & active tracking
 turn_execution_lock = asyncio.Lock()
+_active_chat_turns: Dict[int, Dict[str, Any]] = {}
+_queued_abort_chats: set = set()
+_recently_flushed_media_groups: Dict[str, float] = {}
+_recently_flushed_doc_groups: Dict[str, float] = {}
 
 
 def ensure_first_admin_if_needed(user) -> bool:
@@ -1165,12 +1169,31 @@ async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_abort(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin_access(update):
         return
+    chat_id = update.effective_chat.id
+    turn_info = _active_chat_turns.get(chat_id)
+    _queued_abort_chats.add(chat_id)
+
+    aborted_anything = False
+    if turn_info:
+        aborted_anything = True
+        turn_info["aborted"] = True
+        live_msg = turn_info.get("live_msg")
+        if live_msg:
+            try:
+                await safe_edit_message(
+                    live_msg,
+                    "🛑 <b>Tâche interrompue par l'utilisateur.</b>",
+                    reply_markup=None,
+                )
+            except Exception:
+                pass
+
     if runner.is_running:
-        success = await runner.abort()
-        if success:
-            await update.message.reply_text("🛑 <b>Tâche interrompue immédiatement.</b>", parse_mode=PM)
-        else:
-            await update.message.reply_text("⚠️ Impossible d'arrêter le processus.", parse_mode=PM)
+        aborted_anything = True
+        await runner.abort()
+
+    if aborted_anything:
+        await update.message.reply_text("🛑 <b>Tâche interrompue immédiatement.</b>", parse_mode=PM)
     else:
         await update.message.reply_text("ℹ️ Aucune tâche n'est en cours d'exécution.", parse_mode=PM)
 
@@ -1260,12 +1283,40 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer("⛔ Réservé à l'administrateur.", show_alert=True)
         return
 
-    if data == "abort_running":
-        if runner.is_running:
+    if data == "abort_running" or data.startswith("abort_running:"):
+        chat_id = update.effective_chat.id if update.effective_chat else uid
+        turn_info = _active_chat_turns.get(chat_id)
+        _queued_abort_chats.add(chat_id)
+
+        if turn_info or runner.is_running:
+            if turn_info:
+                turn_info["aborted"] = True
+                live_msg = turn_info.get("live_msg")
+                if live_msg:
+                    try:
+                        await safe_edit_message(
+                            live_msg,
+                            "🛑 <b>Tâche interrompue par l'utilisateur.</b>",
+                            reply_markup=None,
+                        )
+                    except Exception:
+                        pass
             await runner.abort()
             await query.answer("🛑 Exécution interrompue !", show_alert=False)
+            try:
+                if query.message and "file d'attente" in (query.message.text or ""):
+                    await query.message.delete()
+                elif query.message:
+                    await query.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
         else:
             await query.answer("ℹ️ Déjà terminé.", show_alert=False)
+            try:
+                if query.message:
+                    await query.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
         return
 
     if data == "close_menu":
@@ -2876,6 +2927,12 @@ _media_group_lock = asyncio.Lock()
 async def _flush_media_group(mg_id: str, context: ContextTypes.DEFAULT_TYPE):
     async with _media_group_lock:
         buf = _media_group_buffers.pop(mg_id, None)
+        if buf:
+            _recently_flushed_media_groups[mg_id] = asyncio.get_event_loop().time()
+            now = asyncio.get_event_loop().time()
+            to_del = [k for k, v in _recently_flushed_media_groups.items() if now - v > 60]
+            for k in to_del:
+                _recently_flushed_media_groups.pop(k, None)
     if not buf:
         return
 
@@ -2930,61 +2987,95 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ L'envoi d'images est réservé à l'administrateur.")
         return
 
+    mg_id = update.message.media_group_id
+
+    # If this album was already flushed within the last 60s, do not spawn a duplicate turn
+    if mg_id and mg_id in _recently_flushed_media_groups:
+        logger.debug(f"Media group {mg_id} already flushed, skipping late photo update.")
+        return
+
+    if mg_id:
+        async with _media_group_lock:
+            if mg_id in _recently_flushed_media_groups:
+                return
+            if mg_id not in _media_group_buffers:
+                _media_group_buffers[mg_id] = {
+                    "primary_update": update,
+                    "caption": (update.message.caption or "").strip(),
+                    "items": [],
+                    "pending_downloads": 0,
+                    "task": None,
+                }
+            buf = _media_group_buffers[mg_id]
+            buf["pending_downloads"] += 1
+            if update.message.caption and not buf["caption"]:
+                buf["caption"] = update.message.caption.strip()
+                buf["primary_update"] = update
+            if buf["task"] and not buf["task"].done():
+                buf["task"].cancel()
+
+        # Download the photo
+        photo = update.message.photo[-1]
+        item = None
+        try:
+            file = await photo.get_file()
+            tmp_path = TEMP_DIR / f"photo_{photo.file_unique_id}.jpg"
+            await file.download_to_drive(str(tmp_path))
+            item = {
+                "path": str(tmp_path.resolve()),
+                "width": photo.width,
+                "height": photo.height,
+            }
+        except Exception as ex:
+            logger.error(f"Failed downloading album photo {photo.file_unique_id}: {ex}")
+
+        async with _media_group_lock:
+            if mg_id in _media_group_buffers:
+                buf = _media_group_buffers[mg_id]
+                buf["pending_downloads"] = max(0, buf["pending_downloads"] - 1)
+                if item:
+                    buf["items"].append(item)
+                if buf["task"] and not buf["task"].done():
+                    buf["task"].cancel()
+
+                async def _debounce_media_group(group_id: str):
+                    try:
+                        await asyncio.sleep(2.0)
+                        # Wait for any other photos currently in flight
+                        for _ in range(40):
+                            async with _media_group_lock:
+                                b = _media_group_buffers.get(group_id)
+                                if not b or b.get("pending_downloads", 0) <= 0:
+                                    break
+                            await asyncio.sleep(0.5)
+                        await _flush_media_group(group_id, context)
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception as ex:
+                        logger.error(f"Error in _debounce_media_group: {ex}")
+
+                buf["task"] = asyncio.create_task(_debounce_media_group(mg_id))
+        return
+
+    # Single standalone photo
     photo = update.message.photo[-1]
     file = await photo.get_file()
     tmp_path = TEMP_DIR / f"photo_{photo.file_unique_id}.jpg"
     await file.download_to_drive(str(tmp_path))
 
-    mg_id = update.message.media_group_id
-    if not mg_id:
-        caption = update.message.caption or "Analyse cette image et réponds à ma demande."
-        prompt = (
-            f"[IMAGE FOURNIE PAR L'UTILISATEUR]\n"
-            f"Chemin local de l'image : `{tmp_path.resolve()}` (Dimensions: {photo.width}x{photo.height})\n"
-            f"Utilise ton outil `view_file` sur `{tmp_path.resolve()}` pour voir et analyser l'image.\n\n"
-            f" Instructions / Légende de l'utilisateur :\n{caption}"
-        )
-        await _process_user_turn(
-            update,
-            context,
-            prompt,
-            header=f"📸 <i>Image reçue ({photo.width}×{photo.height})</i>\n\n",
-        )
-        return
-
-    # Multi-image album aggregation (debounce 1.2s)
-    async with _media_group_lock:
-        if mg_id not in _media_group_buffers:
-            _media_group_buffers[mg_id] = {
-                "primary_update": update,
-                "caption": (update.message.caption or "").strip(),
-                "items": [],
-                "task": None,
-            }
-        buf = _media_group_buffers[mg_id]
-        if update.message.caption and not buf["caption"]:
-            buf["caption"] = update.message.caption.strip()
-            buf["primary_update"] = update
-
-        buf["items"].append({
-            "path": str(tmp_path.resolve()),
-            "width": photo.width,
-            "height": photo.height,
-        })
-
-        if buf["task"] and not buf["task"].done():
-            buf["task"].cancel()
-
-        async def _debounce_media_group(group_id: str):
-            try:
-                await asyncio.sleep(1.2)
-                await _flush_media_group(group_id, context)
-            except asyncio.CancelledError:
-                pass
-            except Exception as ex:
-                logger.error(f"Error in _debounce_media_group: {ex}")
-
-        buf["task"] = asyncio.create_task(_debounce_media_group(mg_id))
+    caption = update.message.caption or "Analyse cette image et réponds à ma demande."
+    prompt = (
+        f"[IMAGE FOURNIE PAR L'UTILISATEUR]\n"
+        f"Chemin local de l'image : `{tmp_path.resolve()}` (Dimensions: {photo.width}x{photo.height})\n"
+        f"Utilise ton outil `view_file` sur `{tmp_path.resolve()}` pour voir et analyser l'image.\n\n"
+        f"Instructions / Légende de l'utilisateur :\n{caption}"
+    )
+    await _process_user_turn(
+        update,
+        context,
+        prompt,
+        header=f"📸 <i>Image reçue ({photo.width}×{photo.height})</i>\n\n",
+    )
 
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3068,6 +3159,12 @@ _doc_group_lock = asyncio.Lock()
 async def _flush_doc_group(mg_id: str, context: ContextTypes.DEFAULT_TYPE):
     async with _doc_group_lock:
         buf = _doc_group_buffers.pop(mg_id, None)
+        if buf:
+            _recently_flushed_doc_groups[mg_id] = asyncio.get_event_loop().time()
+            now = asyncio.get_event_loop().time()
+            to_del = [k for k, v in _recently_flushed_doc_groups.items() if now - v > 60]
+            for k in to_del:
+                _recently_flushed_doc_groups.pop(k, None)
     if not buf:
         return
 
@@ -3124,8 +3221,76 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
     fname = doc.file_name or f"document_{doc.file_unique_id}"
     safe_name = re.sub(r"[^\w.\- ()]", "_", fname)
-    file = await doc.get_file()
 
+    mg_id = update.message.media_group_id
+
+    # If this document group was already flushed within 60s, do not spawn duplicate turn
+    if mg_id and mg_id in _recently_flushed_doc_groups:
+        logger.debug(f"Doc group {mg_id} already flushed, skipping late document update.")
+        return
+
+    if mg_id:
+        async with _doc_group_lock:
+            if mg_id in _recently_flushed_doc_groups:
+                return
+            if mg_id not in _doc_group_buffers:
+                _doc_group_buffers[mg_id] = {
+                    "primary_update": update,
+                    "caption": (update.message.caption or "").strip(),
+                    "items": [],
+                    "pending_downloads": 0,
+                    "task": None,
+                }
+            buf = _doc_group_buffers[mg_id]
+            buf["pending_downloads"] += 1
+            if update.message.caption and not buf["caption"]:
+                buf["caption"] = update.message.caption.strip()
+                buf["primary_update"] = update
+            if buf["task"] and not buf["task"].done():
+                buf["task"].cancel()
+
+        dest_path = TEMP_DIR / safe_name
+        item = None
+        try:
+            file = await doc.get_file()
+            await file.download_to_drive(str(dest_path))
+            item = {
+                "path": str(dest_path.resolve()),
+                "name": safe_name,
+            }
+        except Exception as ex:
+            logger.error(f"Failed downloading album document {safe_name}: {ex}")
+
+        async with _doc_group_lock:
+            if mg_id in _doc_group_buffers:
+                buf = _doc_group_buffers[mg_id]
+                buf["pending_downloads"] = max(0, buf["pending_downloads"] - 1)
+                if item:
+                    buf["items"].append(item)
+                if buf["task"] and not buf["task"].done():
+                    buf["task"].cancel()
+
+                async def _debounce_doc_group(group_id: str):
+                    try:
+                        await asyncio.sleep(2.0)
+                        # Wait for any other documents currently in flight
+                        for _ in range(40):
+                            async with _doc_group_lock:
+                                b = _doc_group_buffers.get(group_id)
+                                if not b or b.get("pending_downloads", 0) <= 0:
+                                    break
+                            await asyncio.sleep(0.5)
+                        await _flush_doc_group(group_id, context)
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception as ex:
+                        logger.error(f"Error in _debounce_doc_group: {ex}")
+
+                buf["task"] = asyncio.create_task(_debounce_doc_group(mg_id))
+        return
+
+    # Standalone document
+    file = await doc.get_file()
     dest_path = TEMP_DIR / safe_name
     await file.download_to_drive(str(dest_path))
 
@@ -3149,55 +3314,19 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as ex:
                 logger.debug(f"Document was not an agent file, proceeding to normal turn: {ex}")
 
-    mg_id = update.message.media_group_id
-    if not mg_id:
-        caption = update.message.caption or f"Voici le fichier `{safe_name}`. Analyse-le et réponds à ma demande."
-        prompt = (
-            f"[DOCUMENT / FICHIER FOURNI PAR L'UTILISATEUR]\n"
-            f"Nom : `{safe_name}`\n"
-            f"Chemin local : `{dest_path.resolve()}`\n\n"
-            f"Instructions / Légende de l'utilisateur :\n{caption}"
-        )
-        await _process_user_turn(
-            update,
-            context,
-            prompt,
-            header=f"📄 <i>Fichier reçu : <code>{h(safe_name)}</code></i>\n\n",
-        )
-        return
-
-    # Multi-document album aggregation (debounce 1.2s)
-    async with _doc_group_lock:
-        if mg_id not in _doc_group_buffers:
-            _doc_group_buffers[mg_id] = {
-                "primary_update": update,
-                "caption": (update.message.caption or "").strip(),
-                "items": [],
-                "task": None,
-            }
-        buf = _doc_group_buffers[mg_id]
-        if update.message.caption and not buf["caption"]:
-            buf["caption"] = update.message.caption.strip()
-            buf["primary_update"] = update
-
-        buf["items"].append({
-            "path": str(dest_path.resolve()),
-            "name": safe_name,
-        })
-
-        if buf["task"] and not buf["task"].done():
-            buf["task"].cancel()
-
-        async def _debounce_doc_group(group_id: str):
-            try:
-                await asyncio.sleep(1.2)
-                await _flush_doc_group(group_id, context)
-            except asyncio.CancelledError:
-                pass
-            except Exception as ex:
-                logger.error(f"Error in _debounce_doc_group: {ex}")
-
-        buf["task"] = asyncio.create_task(_debounce_doc_group(mg_id))
+    caption = update.message.caption or f"Voici le fichier `{safe_name}`. Analyse-le et réponds à ma demande."
+    prompt = (
+        f"[DOCUMENT / FICHIER FOURNI PAR L'UTILISATEUR]\n"
+        f"Nom : `{safe_name}`\n"
+        f"Chemin local : `{dest_path.resolve()}`\n\n"
+        f"Instructions / Légende de l'utilisateur :\n{caption}"
+    )
+    await _process_user_turn(
+        update,
+        context,
+        prompt,
+        header=f"📄 <i>Fichier reçu : <code>{h(safe_name)}</code></i>\n\n",
+    )
 
 
 # =============================================================================
@@ -3344,7 +3473,7 @@ async def _process_user_turn(
     queued_notice_msg = None
     if turn_execution_lock.locked():
         abort_kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🛑 Interrompre la tâche en cours", callback_data="abort_running")]
+            [InlineKeyboardButton("🛑 Interrompre la tâche en cours", callback_data=f"abort_running:{chat_id}")]
         ])
         try:
             queued_notice_msg = await update.message.reply_text(
@@ -3363,6 +3492,12 @@ async def _process_user_turn(
             except Exception:
                 pass
 
+        # If user requested abort while this turn was waiting in queue, drop it immediately
+        if chat_id in _queued_abort_chats:
+            _queued_abort_chats.discard(chat_id)
+            logger.info(f"Skipping queued turn for chat {chat_id} because abort was requested.")
+            return
+
         try:
             TRANSIENT_MSGS_FILE.unlink(missing_ok=True)
             TURN_SENT_FILES_FILE.unlink(missing_ok=True)
@@ -3374,10 +3509,17 @@ async def _process_user_turn(
         verbosity = active_settings.get("verbosity", "normal")
 
         abort_kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🛑 Stopper l'exécution", callback_data="abort_running")]
+            [InlineKeyboardButton("🛑 Stopper l'exécution", callback_data=f"abort_running:{chat_id}")]
         ])
 
         live_msg = None
+        turn_state = {
+            "chat_id": chat_id,
+            "live_msg": None,
+            "aborted": False,
+        }
+        _active_chat_turns[chat_id] = turn_state
+
         try:
             init_text = (
                 f"{header}⏳ <b>{h(agent_name)} prépare l'action...</b>"
@@ -3385,9 +3527,11 @@ async def _process_user_turn(
                 else f"⏳ <b>{h(agent_name)} prépare l'action...</b>"
             )
             live_msg = await update.message.reply_text(init_text, reply_markup=abort_kb, parse_mode=PM)
+            turn_state["live_msg"] = live_msg
         except Exception:
             try:
                 live_msg = await update.message.reply_text(f"⏳ {agent_name} prépare l'action...")
+                turn_state["live_msg"] = live_msg
             except Exception as e:
                 logger.warning(f"Failed sending initial ack: {e}")
 
@@ -3410,6 +3554,8 @@ async def _process_user_turn(
 
         async def on_update(current_text: str, current_action: str):
             nonlocal live_msg, last_rendered
+            if turn_state.get("aborted"):
+                return
             if not current_text and not current_action and not tool_blocks:
                 return
 
@@ -3437,25 +3583,31 @@ async def _process_user_turn(
                 parts.append(converted + " <code>▌</code>")
 
             display = "\n\n".join(parts)
-            if display != last_rendered and live_msg:
+            if display != last_rendered and live_msg and not turn_state.get("aborted"):
                 updated = await safe_edit_message(live_msg, display, reply_markup=abort_kb)
                 if updated:
                     last_rendered = display
 
         async def on_model_fallback(old_model: str, new_model: str):
+            if turn_state.get("aborted"):
+                return
             notice = (
                 f"{header}<blockquote>⚠️ Quota <code>{h(old_model)}</code> atteint, "
                 f"bascule automatique sur <code>{h(new_model)}</code>...</blockquote>"
             )
-            if live_msg:
+            if live_msg and not turn_state.get("aborted"):
                 await safe_edit_message(live_msg, notice, reply_markup=abort_kb)
 
         async def on_tool_call(tool_name: str, args: dict, call_id: str):
+            if turn_state.get("aborted"):
+                return
             block = format_tool_call_html(tool_name, args, result=None)
             tool_blocks.append((call_id, block))
             tool_start_times[call_id] = asyncio.get_event_loop().time()
 
         async def on_tool_result(tool_name: str, args: dict, result: str, call_id: str, is_error: bool):
+            if turn_state.get("aborted"):
+                return
             elapsed = ""
             if call_id in tool_start_times:
                 secs = int(asyncio.get_event_loop().time() - tool_start_times.pop(call_id))
@@ -3484,8 +3636,21 @@ async def _process_user_turn(
             response_text = f"❌ <b>Erreur inattendue :</b> <code>{h(str(e))}</code>"
             is_success = False
         finally:
+            _active_chat_turns.pop(chat_id, None)
             typing_active = False
             typing_task.cancel()
+
+        if turn_state.get("aborted") or "interrompue par l'utilisateur" in response_text:
+            if live_msg:
+                try:
+                    await safe_edit_message(
+                        live_msg,
+                        "🛑 <b>Exécution interrompue par l'utilisateur.</b>",
+                        reply_markup=None,
+                    )
+                except Exception:
+                    pass
+            return
 
         # --- Final Response Rendering ---
         try:

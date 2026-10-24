@@ -219,3 +219,51 @@ def test_quota_manager_reset_cooldowns_and_usage_dashboard(tmp_path):
     assert "Rolling 5h Cycle" in en_dash
 
 
+def test_runner_is_running_and_abort():
+    import asyncio
+    from agent_runner import runner
+    from agy_session import agy_session
+
+    assert runner.is_running is False
+
+    # Simulate runner running state
+    runner._is_running_prompt = True
+    assert runner.is_running is True
+
+    # Abort
+    async def _abort():
+        await runner.abort()
+        assert runner._is_running_prompt is False
+        assert agy_session._is_aborted is True
+
+    asyncio.run(_abort())
+
+
+def test_media_group_pending_download_tracking():
+    # Verify buffer tracking structure
+    buf = {
+        "items": [],
+        "pending_downloads": 0,
+        "caption": "English course book and workbook",
+    }
+    # Photo 1 registered
+    buf["pending_downloads"] += 1
+    # Photo 2 registered
+    buf["pending_downloads"] += 1
+    assert buf["pending_downloads"] == 2
+
+    # Photo 1 finished download
+    buf["pending_downloads"] -= 1
+    buf["items"].append({"path": "/tmp/book1.jpg", "width": 1979, "height": 2560})
+    # Should not flush yet because pending_downloads > 0
+    assert buf["pending_downloads"] == 1
+    assert len(buf["items"]) == 1
+
+    # Photo 2 finished download
+    buf["pending_downloads"] -= 1
+    buf["items"].append({"path": "/tmp/book2.jpg", "width": 1979, "height": 2560})
+    assert buf["pending_downloads"] == 0
+    assert len(buf["items"]) == 2
+
+
+

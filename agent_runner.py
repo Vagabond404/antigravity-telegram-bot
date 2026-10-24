@@ -316,10 +316,11 @@ class AgentRunner:
 
     def __init__(self):
         self.always_allow_session: bool = False
+        self._is_running_prompt: bool = False
 
     @property
     def is_running(self) -> bool:
-        return agy_session.is_running
+        return agy_session.is_running or self._is_running_prompt
 
     @property
     def has_active_session(self) -> bool:
@@ -353,6 +354,7 @@ class AgentRunner:
         agy_session.set_conversation(conversation_id)
 
     async def abort(self) -> bool:
+        self._is_running_prompt = False
         return await agy_session.abort()
 
     async def warm_up(self, settings: dict) -> bool:
@@ -398,6 +400,7 @@ class AgentRunner:
             candidate_models = [preferred_model] + [m for m in model_ids if m != preferred_model]
 
         governor.start_turn()
+        self._is_running_prompt = True
         try:
             try:
                 auto_extract_and_store_facts(prompt)
@@ -429,6 +432,9 @@ class AgentRunner:
             timeout = float(settings.get("timeout", 600))
 
             for model_idx, current_model in enumerate(candidate_models[:4]):
+                if not self._is_running_prompt:
+                    return ("🛑 Exécution interrompue par l'utilisateur.", False)
+
                 if model_idx > 0 and on_model_fallback:
                     try:
                         await on_model_fallback(candidate_models[model_idx - 1], current_model)
@@ -449,6 +455,9 @@ class AgentRunner:
 
                 if is_success:
                     return (response_text, True)
+
+                if "interrompue par l'utilisateur" in response_text or not self._is_running_prompt:
+                    return (response_text, False)
 
                 if is_quota:
                     logger.warning(f"Quota limit reached on '{current_model}'. Switching to next fallback model...")
@@ -483,6 +492,7 @@ class AgentRunner:
             )
 
         finally:
+            self._is_running_prompt = False
             governor.end_turn()
 
 
