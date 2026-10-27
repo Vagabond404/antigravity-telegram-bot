@@ -455,128 +455,239 @@ def smart_split_html(text: str, max_length: int = 4000) -> List[str]:
 # Interactive Telegram Control Center Keyboards
 # =============================================================================
 
-def format_settings_summary_html(settings: dict) -> str:
+def format_settings_summary_html(settings: dict, user_lang: str = "en") -> str:
     agent_name = settings.get("agent_name", "Antigravity Agent")
-    model = settings.get("model", "gemini-4-argon-medium")
+    model = settings.get("model", "auto")
     effort = settings.get("effort", "auto")
     mode = settings.get("mode", "auto-approve")
     sandbox = bool(settings.get("sandbox", False))
     multi_agent = bool(settings.get("multi_agent", True))
-    agent_prof = settings.get("agent_profile", "") or "Principal (Auto)"
     verbosity = settings.get("verbosity", "normal")
     auto_files = bool(settings.get("auto_send_files", True))
     ws = settings.get("workspace_dir", "")
     extra_dirs = settings.get("extra_dirs", []) or []
     timeout = int(settings.get("timeout", 600))
     custom_instr = settings.get("custom_instructions", "").strip()
+    tier = settings.get("account_tier", "auto")
+
+    is_fr = (user_lang == "fr")
 
     if timeout <= 0:
-        t_str = "♾️ Infini (Sans limite)"
+        t_str = "♾️ Infini (Sans limite)" if is_fr else "♾️ Infinite (No limit)"
     elif timeout >= 3600:
         t_str = f"{timeout // 3600}h" if timeout % 3600 == 0 else f"{timeout / 3600:.1f}h"
     else:
         t_str = f"{timeout // 60} min"
 
     autonomy = settings.get("agent_creation_autonomy", "ask")
-    autonomy_badge = {"ask": "✋ Demander", "auto": "⚡ Auto", "off": "⛔ Off"}.get(autonomy, autonomy)
+    if is_fr:
+        autonomy_badge = {"ask": "✋ Demander", "auto": "⚡ Auto", "off": "⛔ Off"}.get(autonomy, autonomy)
+        lines = [
+            f"🎛️ <b>Centre de Contrôle — {h(agent_name)}</b>\n",
+            f"• 🏷️ <b>Forfait Google :</b> <code>{h(tier.upper())}</code>",
+            f"• 🧠 <b>Modèle IA :</b> <code>{h(model)}</code>",
+            f"• 💡 <b>Réflexion (Effort) :</b> <code>{h(effort)}</code>",
+            f"• 🛡️ <b>Mode d'exécution :</b> <code>{h(mode)}</code>",
+            f"• 🤝 <b>Multi-Agents :</b> {'🟢 Activé' if multi_agent else '🔴 Désactivé'} | <b>Autonomie :</b> <code>{h(autonomy_badge)}</code>",
+            f"• 📦 <b>Sandbox CLI :</b> {'🟢 Activé' if sandbox else '⚪ Désactivé'}",
+            f"• ⏱️ <b>Timeout :</b> <code>{t_str}</code>",
+            f"• 👁️ <b>Affichage Outils :</b> <code>{h(verbosity)}</code>",
+            f"• 📤 <b>Envoi Auto Médias :</b> {'🟢 Oui' if auto_files else '🔴 Non'}",
+            f"• 📁 <b>Workspace :</b> <code>{h(ws)}</code>" + (f" (+{len(extra_dirs)} rép.)" if extra_dirs else ""),
+        ]
+        if custom_instr:
+            preview = custom_instr[:70] + ("…" if len(custom_instr) > 70 else "")
+            lines.append(f"• 📌 <b>Instructions perso :</b> <i>{h(preview)}</i>")
+        lines.append("\n<i>Cliquez sur une catégorie ci-dessous pour configurer l'agent en direct :</i>")
+    else:
+        autonomy_badge = {"ask": "✋ Ask", "auto": "⚡ Auto", "off": "⛔ Off"}.get(autonomy, autonomy)
+        lines = [
+            f"🎛️ <b>Control Center — {h(agent_name)}</b>\n",
+            f"• 🏷️ <b>Google Plan:</b> <code>{h(tier.upper())}</code>",
+            f"• 🧠 <b>AI Model:</b> <code>{h(model)}</code>",
+            f"• 💡 <b>Effort (Reasoning):</b> <code>{h(effort)}</code>",
+            f"• 🛡️ <b>Execution Mode:</b> <code>{h(mode)}</code>",
+            f"• 🤝 <b>Multi-Agent Swarm:</b> {'🟢 Enabled' if multi_agent else '🔴 Disabled'} | <b>Autonomy:</b> <code>{h(autonomy_badge)}</code>",
+            f"• 📦 <b>CLI Sandbox:</b> {'🟢 Enabled' if sandbox else '⚪ Disabled'}",
+            f"• ⏱️ <b>Timeout:</b> <code>{t_str}</code>",
+            f"• 👁️ <b>Verbosity:</b> <code>{h(verbosity)}</code>",
+            f"• 📤 <b>Auto-Send Files:</b> {'🟢 Yes' if auto_files else '🔴 No'}",
+            f"• 📁 <b>Workspace:</b> <code>{h(ws)}</code>" + (f" (+{len(extra_dirs)} dirs)" if extra_dirs else ""),
+        ]
+        if custom_instr:
+            preview = custom_instr[:70] + ("…" if len(custom_instr) > 70 else "")
+            lines.append(f"• 📌 <b>Custom instructions:</b> <i>{h(preview)}</i>")
+        lines.append("\n<i>Click an item below to configure your agent in real time:</i>")
 
-    lines = [
-        f"🎛️ <b>Centre de Contrôle — {h(agent_name)}</b>\n",
-        f"• 🧠 <b>Modèle IA :</b> <code>{h(model)}</code>",
-        f"• 💡 <b>Réflexion (Effort) :</b> <code>{h(effort)}</code>",
-        f"• 🛡️ <b>Mode d'exécution :</b> <code>{h(mode)}</code>",
-        f"• 🤝 <b>Multi-Agents :</b> {'🟢 Activé' if multi_agent else '🔴 Désactivé'} | <b>Autonomie :</b> <code>{h(autonomy_badge)}</code>",
-        f"• 📦 <b>Sandbox CLI :</b> {'🟢 Activé' if sandbox else '⚪ Désactivé'}",
-        f"• ⏱️ <b>Timeout :</b> <code>{t_str}</code>",
-        f"• 👁️ <b>Affichage Outils :</b> <code>{h(verbosity)}</code>",
-        f"• 📤 <b>Envoi Auto Médias :</b> {'🟢 Oui' if auto_files else '🔴 Non'}",
-        f"• 📁 <b>Workspace :</b> <code>{h(ws)}</code>" + (f" (+{len(extra_dirs)} rép.)" if extra_dirs else ""),
-    ]
-    if custom_instr:
-        preview = custom_instr[:70] + ("…" if len(custom_instr) > 70 else "")
-        lines.append(f"• 📌 <b>Instructions perso :</b> <i>{h(preview)}</i>")
-
-    lines.append("\n<i>Cliquez sur une catégorie ci-dessous pour configurer l'agent en direct :</i>")
     return "\n".join(lines)
 
 
-def get_settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
+def get_settings_keyboard(settings: dict, user_lang: str = "en") -> InlineKeyboardMarkup:
     mode = settings.get("mode", "auto-approve")
-    model = settings.get("model", "gemini-4-argon-medium")
+    model = settings.get("model", "auto")
     effort = settings.get("effort", "auto")
     timeout = int(settings.get("timeout", 600))
     sandbox = bool(settings.get("sandbox", False))
     multi_agent = bool(settings.get("multi_agent", True))
     autonomy = settings.get("agent_creation_autonomy", "ask")
-    autonomy_label = {"ask": "✋ Demander", "auto": "⚡ Auto", "off": "⛔ Off"}.get(autonomy, autonomy)
     verbosity = settings.get("verbosity", "normal")
     auto_files = bool(settings.get("auto_send_files", True))
+    tier = settings.get("account_tier", "auto")
 
-    mode_label = {"auto-approve": "⚡ Autonome", "accept-edits": "✏️ Éditions", "plan": "📋 Plan"}.get(mode, mode)
-    effort_label = {
-        "auto": "🤖 Auto",
-        "low": "⚡ Low",
-        "medium": "⚖️ Medium",
-        "high": "🧠 High",
-        "xhigh": "🔥 XHigh",
-        "max": "🚀 Max",
-    }.get(effort, effort)
-    verb_label = {"compact": "🧼 Compact", "normal": "⚖️ Normal", "detailed": "🔬 Détaillé"}.get(verbosity, verbosity)
+    is_fr = (user_lang == "fr")
 
-    if timeout <= 0:
-        timeout_label = "♾️ Infini"
-    elif timeout >= 3600:
-        timeout_label = f"{timeout // 3600}h"
+    if is_fr:
+        autonomy_label = {"ask": "✋ Demander", "auto": "⚡ Auto", "off": "⛔ Off"}.get(autonomy, autonomy)
+        mode_label = {"auto-approve": "⚡ Autonome", "accept-edits": "✏️ Éditions", "plan": "📋 Plan"}.get(mode, mode)
+        effort_label = {
+            "auto": "🤖 Auto",
+            "low": "⚡ Low",
+            "medium": "⚖️ Medium",
+            "high": "🧠 High",
+            "xhigh": "🔥 XHigh",
+            "max": "🚀 Max",
+        }.get(effort, effort)
+        verb_label = {"compact": "🧼 Compact", "normal": "⚖️ Normal", "detailed": "🔬 Détaillé"}.get(verbosity, verbosity)
+        tier_label = {"auto": "🤖 Auto", "free": "🌱 Gratuit", "pro": "⭐ Pro", "ultra": "👑 Ultra"}.get(tier, tier)
+        timeout_label = "♾️ Infini" if timeout <= 0 else (f"{timeout // 3600}h" if timeout >= 3600 else f"{timeout // 60}m")
+
+        keyboard = [
+            [InlineKeyboardButton(f"🧠 Modèle : {model}", callback_data="menu_model")],
+            [
+                InlineKeyboardButton(f"🏷️ Forfait : {tier_label}", callback_data="menu_tier"),
+                InlineKeyboardButton(f"💡 Effort : {effort_label}", callback_data="menu_effort"),
+            ],
+            [
+                InlineKeyboardButton(f"🛡️ Mode : {mode_label}", callback_data="menu_mode"),
+                InlineKeyboardButton(f"🤝 Multi-Agents : {'ON ✅' if multi_agent else 'OFF ❌'}", callback_data="toggle_multi_agent"),
+            ],
+            [
+                InlineKeyboardButton("🤖 Équipe (/agents)", callback_data="cmd_agents"),
+                InlineKeyboardButton(f"⚙️ Autonomie : {autonomy_label}", callback_data="cycle_autonomy"),
+            ],
+            [
+                InlineKeyboardButton(f"📦 Sandbox : {'ON 🔒' if sandbox else 'OFF 🔓'}", callback_data="toggle_sandbox"),
+                InlineKeyboardButton(f"⏱️ Timeout : {timeout_label}", callback_data="menu_timeout"),
+            ],
+            [
+                InlineKeyboardButton(f"👁️ Vue : {verb_label}", callback_data="menu_verbosity"),
+                InlineKeyboardButton(f"📤 Auto-Médias : {'ON ✅' if auto_files else 'OFF ❌'}", callback_data="toggle_autofiles"),
+            ],
+            [
+                InlineKeyboardButton("📁 Workspace & Dossiers", callback_data="menu_workspace"),
+                InlineKeyboardButton("🔌 Serveurs MCP (/mcp)", callback_data="menu_mcp"),
+            ],
+            [
+                InlineKeyboardButton("📊 Quotas & Tokens (/usage)", callback_data="cmd_usage"),
+                InlineKeyboardButton("🧩 Plugins CLI (/plugins)", callback_data="menu_plugins"),
+            ],
+            [
+                InlineKeyboardButton("🌐 Remote Control", callback_data="menu_remote"),
+                InlineKeyboardButton("💬 Sessions & Historique", callback_data="menu_sessions"),
+            ],
+            [
+                InlineKeyboardButton("✏️ Instructions Perso", callback_data="menu_persona"),
+                InlineKeyboardButton("🕹️ Commandes (/commands)", callback_data="menu_commands"),
+            ],
+            [
+                InlineKeyboardButton("🏫 Groupes (/groups)", callback_data="menu_groups"),
+                InlineKeyboardButton("🌐 Langue / Language", callback_data="menu_language"),
+            ],
+            [
+                InlineKeyboardButton("🔄 Maj Système (/update)", callback_data="sys_update:check"),
+                InlineKeyboardButton("👥 Utilisateurs & Accès", callback_data="auth:refresh"),
+            ],
+            [
+                InlineKeyboardButton("🔄 Par défaut", callback_data="reset_settings"),
+                InlineKeyboardButton("❌ Fermer", callback_data="close_menu"),
+            ],
+        ]
     else:
-        timeout_label = f"{timeout // 60}m"
+        autonomy_label = {"ask": "✋ Ask", "auto": "⚡ Auto", "off": "⛔ Off"}.get(autonomy, autonomy)
+        mode_label = {"auto-approve": "⚡ Autonomous", "accept-edits": "✏️ Edits", "plan": "📋 Plan"}.get(mode, mode)
+        effort_label = {
+            "auto": "🤖 Auto",
+            "low": "⚡ Low",
+            "medium": "⚖️ Medium",
+            "high": "🧠 High",
+            "xhigh": "🔥 XHigh",
+            "max": "🚀 Max",
+        }.get(effort, effort)
+        verb_label = {"compact": "🧼 Compact", "normal": "⚖️ Normal", "detailed": "🔬 Detailed"}.get(verbosity, verbosity)
+        tier_label = {"auto": "🤖 Auto", "free": "🌱 Free", "pro": "⭐ Pro", "ultra": "👑 Ultra"}.get(tier, tier)
+        timeout_label = "♾️ Infinite" if timeout <= 0 else (f"{timeout // 3600}h" if timeout >= 3600 else f"{timeout // 60}m")
 
-    keyboard = [
-        [InlineKeyboardButton(f"🧠 Modèle : {model}", callback_data="menu_model")],
-        [
-            InlineKeyboardButton(f"💡 Effort : {effort_label}", callback_data="menu_effort"),
-            InlineKeyboardButton(f"🛡️ Mode : {mode_label}", callback_data="menu_mode"),
-        ],
-        [
-            InlineKeyboardButton(f"🤝 Multi-Agents : {'ON ✅' if multi_agent else 'OFF ❌'}", callback_data="toggle_multi_agent"),
-            InlineKeyboardButton("🤖 Équipe (/agents)", callback_data="cmd_agents"),
-        ],
-        [
-            InlineKeyboardButton(f"⚙️ Autonomie : {autonomy_label}", callback_data="cycle_autonomy"),
-            InlineKeyboardButton(f"📦 Sandbox : {'ON 🔒' if sandbox else 'OFF 🔓'}", callback_data="toggle_sandbox"),
-        ],
-        [
-            InlineKeyboardButton(f"⏱️ Timeout : {timeout_label}", callback_data="menu_timeout"),
-            InlineKeyboardButton(f"👁️ Vue : {verb_label}", callback_data="menu_verbosity"),
-        ],
-        [
-            InlineKeyboardButton(f"📤 Auto-Médias : {'ON ✅' if auto_files else 'OFF ❌'}", callback_data="toggle_autofiles"),
-            InlineKeyboardButton("📁 Workspace & Dossiers", callback_data="menu_workspace"),
-        ],
-        [
-            InlineKeyboardButton("🔌 Serveurs MCP", callback_data="menu_mcp"),
-            InlineKeyboardButton("🧩 Plugins CLI", callback_data="menu_plugins"),
-        ],
-        [
-            InlineKeyboardButton("🌐 Remote Control", callback_data="menu_remote"),
-            InlineKeyboardButton("💬 Sessions & Historique", callback_data="menu_sessions"),
-        ],
-        [
-            InlineKeyboardButton("✏️ Personnaliser Agent", callback_data="menu_persona"),
-            InlineKeyboardButton("🕹️ Commandes (/commands)", callback_data="menu_commands"),
-        ],
-        [
-            InlineKeyboardButton("🏫 Groupes (/groups)", callback_data="menu_groups"),
-            InlineKeyboardButton("🌐 Langue / Language", callback_data="menu_language"),
-        ],
-        [
-            InlineKeyboardButton("🔄 Maj Système & CLI (/update)", callback_data="sys_update:check"),
-            InlineKeyboardButton("👥 Utilisateurs", callback_data="auth:refresh"),
-        ],
-        [
-            InlineKeyboardButton("🔄 Par défaut", callback_data="reset_settings"),
-            InlineKeyboardButton("❌ Fermer", callback_data="close_menu"),
-        ],
+        keyboard = [
+            [InlineKeyboardButton(f"🧠 Model: {model}", callback_data="menu_model")],
+            [
+                InlineKeyboardButton(f"🏷️ Plan: {tier_label}", callback_data="menu_tier"),
+                InlineKeyboardButton(f"💡 Effort: {effort_label}", callback_data="menu_effort"),
+            ],
+            [
+                InlineKeyboardButton(f"🛡️ Mode: {mode_label}", callback_data="menu_mode"),
+                InlineKeyboardButton(f"🤝 Multi-Agent: {'ON ✅' if multi_agent else 'OFF ❌'}", callback_data="toggle_multi_agent"),
+            ],
+            [
+                InlineKeyboardButton("🤖 Subagents (/agents)", callback_data="cmd_agents"),
+                InlineKeyboardButton(f"⚙️ Autonomy: {autonomy_label}", callback_data="cycle_autonomy"),
+            ],
+            [
+                InlineKeyboardButton(f"📦 Sandbox: {'ON 🔒' if sandbox else 'OFF 🔓'}", callback_data="toggle_sandbox"),
+                InlineKeyboardButton(f"⏱️ Timeout: {timeout_label}", callback_data="menu_timeout"),
+            ],
+            [
+                InlineKeyboardButton(f"👁️ View: {verb_label}", callback_data="menu_verbosity"),
+                InlineKeyboardButton(f"📤 Auto-Files: {'ON ✅' if auto_files else 'OFF ❌'}", callback_data="toggle_autofiles"),
+            ],
+            [
+                InlineKeyboardButton("📁 Workspace & Dirs", callback_data="menu_workspace"),
+                InlineKeyboardButton("🔌 MCP Servers (/mcp)", callback_data="menu_mcp"),
+            ],
+            [
+                InlineKeyboardButton("📊 Token Gauges (/usage)", callback_data="cmd_usage"),
+                InlineKeyboardButton("🧩 CLI Plugins (/plugins)", callback_data="menu_plugins"),
+            ],
+            [
+                InlineKeyboardButton("🌐 Remote Control", callback_data="menu_remote"),
+                InlineKeyboardButton("💬 Sessions (/sessions)", callback_data="menu_sessions"),
+            ],
+            [
+                InlineKeyboardButton("✏️ Custom Instructions", callback_data="menu_persona"),
+                InlineKeyboardButton("🕹️ Commands (/commands)", callback_data="menu_commands"),
+            ],
+            [
+                InlineKeyboardButton("🏫 Groups (/groups)", callback_data="menu_groups"),
+                InlineKeyboardButton("🌐 Language", callback_data="menu_language"),
+            ],
+            [
+                InlineKeyboardButton("🔄 Update System (/update)", callback_data="sys_update:check"),
+                InlineKeyboardButton("👥 Users & Access", callback_data="auth:refresh"),
+            ],
+            [
+                InlineKeyboardButton("🔄 Reset to Default", callback_data="reset_settings"),
+                InlineKeyboardButton("❌ Close", callback_data="close_menu"),
+            ],
+        ]
+
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_account_tier_selection_keyboard(current_tier: str, user_lang: str = "en") -> InlineKeyboardMarkup:
+    """Build selection keyboard for Google Antigravity account tier."""
+    is_fr = (user_lang == "fr")
+    tiers = [
+        ("auto", "🤖 Auto-détection (selon Antigravity CLI)" if is_fr else "🤖 Auto-Detect (via Antigravity CLI)"),
+        ("free", "🌱 Gratuit / Free (Flash uniquement, Économie de quota)" if is_fr else "🌱 Free Tier (Flash Only, Quota Preserving)"),
+        ("pro", "⭐ Google AI Pro (Argon 4, Claude, Essaim Multi-Agents)" if is_fr else "⭐ Google AI Pro (Argon 4, Claude, Full Swarm)"),
+        ("ultra", "👑 Ultra / Enterprise (Quotas Maximaux & Tous Modèles)" if is_fr else "👑 Ultra / Enterprise (Max Limits & All Models)"),
     ]
+    keyboard = []
+    for t_val, label in tiers:
+        check = " ✅" if t_val == current_tier else ""
+        keyboard.append([InlineKeyboardButton(f"{label}{check}", callback_data=f"set_tier:{t_val}")])
+
+    back_btn = "⬅️ Retour au Centre de Contrôle" if is_fr else "⬅️ Back to Settings"
+    keyboard.append([InlineKeyboardButton(back_btn, callback_data="menu_main")])
     return InlineKeyboardMarkup(keyboard)
 
 

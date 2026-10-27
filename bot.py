@@ -110,6 +110,7 @@ from ui_helpers import (
     get_new_group_alert_keyboard,
     get_language_selection_keyboard,
     get_usage_keyboard,
+    get_account_tier_selection_keyboard,
 )
 from memory_manager import (
     add_or_update_memory,
@@ -703,15 +704,13 @@ async def cmd_models(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_usage(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     uid = user.id if user else 0
-    if not is_admin(uid, user):
-        await update.message.reply_text("⛔ Commande réservée à l'administrateur." if get_user_language(uid) == "fr" else "⛔ Admin only command.")
-        return
+    user_lang = get_user_language(uid)
     try:
         from quota_manager import quota_mgr
-        user_lang = get_user_language(uid)
-        text = quota_mgr.format_usage_dashboard(user_lang=user_lang)
+        account_tier = settings.get("account_tier", "auto")
+        text = quota_mgr.format_usage_dashboard(user_lang=user_lang, account_tier=account_tier)
     except Exception as e:
-        text = f"❌ <b>Erreur Quotas :</b> <code>{h(str(e))}</code>"
+        text = f"❌ <b>Error:</b> <code>{h(str(e))}</code>"
 
     kb = get_usage_keyboard(user_lang=user_lang)
     if update.callback_query:
@@ -1394,11 +1393,48 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     # --- Control Center Navigation & Settings ---
     if data == "menu_main":
         await query.answer()
+        user_lang = get_user_language(uid)
         pending_admin_input.pop(uid, None)
         await safe_edit_message(
             query.message,
-            format_settings_summary_html(settings),
-            reply_markup=get_settings_keyboard(settings),
+            format_settings_summary_html(settings, user_lang=user_lang),
+            reply_markup=get_settings_keyboard(settings, user_lang=user_lang),
+        )
+        return
+
+    if data == "menu_tier":
+        await query.answer()
+        user_lang = get_user_language(uid)
+        is_fr = (user_lang == "fr")
+        text = (
+            "🏷️ <b>Forfait Google Antigravity :</b>\n\n"
+            "• <b>🌱 Gratuit (Free) :</b> Flash uniquement (économie stricte de quota, mono-agent).\n"
+            "• <b>⭐ Pro :</b> Débloque Gemini 4 Argon, Claude Sonnet/Opus et l'essaim Multi-Agents.\n"
+            "• <b>👑 Ultra / Entreprise :</b> Quotas maximaux, effort de réflexion maximum."
+            if is_fr else
+            "🏷️ <b>Google Antigravity Plan:</b>\n\n"
+            "• <b>🌱 Free Tier:</b> Flash only (strict quota preservation, single-agent).\n"
+            "• <b>⭐ Pro Plan:</b> Unlocks Gemini 4 Argon, Claude Sonnet/Opus & Multi-Agent Swarms.\n"
+            "• <b>👑 Ultra / Enterprise:</b> Maximum token quotas and highest reasoning effort."
+        )
+        await safe_edit_message(
+            query.message,
+            text,
+            reply_markup=get_account_tier_selection_keyboard(settings.get("account_tier", "auto"), user_lang=user_lang),
+        )
+        return
+
+    if data.startswith("set_tier:"):
+        tier_val = data.split(":", 1)[1]
+        settings["account_tier"] = tier_val
+        save_settings(settings)
+        runner.reset_session()
+        user_lang = get_user_language(uid)
+        await query.answer(f"Plan: {tier_val.upper()}")
+        await safe_edit_message(
+            query.message,
+            format_settings_summary_html(settings, user_lang=user_lang),
+            reply_markup=get_settings_keyboard(settings, user_lang=user_lang),
         )
         return
 
@@ -1488,11 +1524,12 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    if data in ("cmd_usage", "cmd_quota"):
+    if data in ("cmd_usage", "cmd_quota", "usage_refresh"):
         await query.answer()
         from quota_manager import quota_mgr
         user_lang = get_user_language(uid)
-        text = quota_mgr.format_usage_dashboard(user_lang=user_lang)
+        account_tier = settings.get("account_tier", "auto")
+        text = quota_mgr.format_usage_dashboard(user_lang=user_lang, account_tier=account_tier)
         kb = get_usage_keyboard(user_lang=user_lang)
         await safe_edit_message(query.message, text, reply_markup=kb)
         return
@@ -1507,7 +1544,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             else f"✅ {unblocked} quota cooldown lock(s) reset!"
         )
         await query.answer(alert_msg, show_alert=True)
-        text = quota_mgr.format_usage_dashboard(user_lang=user_lang)
+        account_tier = settings.get("account_tier", "auto")
+        text = quota_mgr.format_usage_dashboard(user_lang=user_lang, account_tier=account_tier)
         kb = get_usage_keyboard(user_lang=user_lang)
         await safe_edit_message(query.message, text, reply_markup=kb)
         return
@@ -1804,11 +1842,13 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     if data.startswith("set_model:"):
         settings["model"] = data.split(":", 1)[1]
         save_settings(settings)
-        await query.answer(f"Modèle : {settings['model']}")
+        runner.reset_session()
+        user_lang = get_user_language(uid)
+        await query.answer(f"Model: {settings['model']}")
         await safe_edit_message(
             query.message,
-            format_settings_summary_html(settings),
-            reply_markup=get_settings_keyboard(settings),
+            format_settings_summary_html(settings, user_lang=user_lang),
+            reply_markup=get_settings_keyboard(settings, user_lang=user_lang),
         )
         return
 

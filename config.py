@@ -158,6 +158,55 @@ ALLOWED_USER_ID = int(_raw_user) if _raw_user.isdigit() else 0
 
 AGY_BIN_PATH = find_agy_binary() or ("agy.exe" if IS_WINDOWS else "agy")
 
+# Locales Directory for Dynamic Translation Persistence
+LOCALES_DIR = BASE_DIR / "locales"
+LOCALES_DIR.mkdir(parents=True, exist_ok=True)
+
+# Account Tier Definitions for Google Antigravity
+ACCOUNT_TIER_AUTO = "auto"
+ACCOUNT_TIER_FREE = "free"
+ACCOUNT_TIER_PRO = "pro"
+ACCOUNT_TIER_ULTRA = "ultra"
+VALID_ACCOUNT_TIERS = [ACCOUNT_TIER_AUTO, ACCOUNT_TIER_FREE, ACCOUNT_TIER_PRO, ACCOUNT_TIER_ULTRA]
+
+# Antigravity AI Model Families (3 distinct quota categories)
+MODEL_FAMILIES: Dict[str, List[str]] = {
+    "gemini": [
+        "gemini-3.8-flash-low",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-high",
+    ],
+    "argon": [
+        "gemini-4-argon-low",
+        "gemini-4-argon-medium",
+        "gemini-4-argon-high",
+    ],
+    "claude": [
+        "claude-sonnet-5-5-low",
+        "claude-sonnet-5-5-medium",
+        "claude-sonnet-5-5-high",
+        "claude-opus-5-5-low",
+        "claude-opus-5-5-medium",
+        "claude-opus-5-5-high",
+    ],
+    "other": [
+        "gpt-oss-120b-medium",
+    ],
+}
+
+
+def get_model_family(model_name: str) -> str:
+    """Return the Antigravity model family ('gemini', 'argon', 'claude', or 'other')."""
+    m = (model_name or "").lower()
+    if "argon" in m:
+        return "argon"
+    if "claude" in m:
+        return "claude"
+    if "flash" in m or "gemini" in m:
+        return "gemini"
+    return "other"
+
+
 # State & Configuration Files
 SETTINGS_FILE = BASE_DIR / "settings.json"
 CUSTOM_COMMANDS_FILE = BASE_DIR / "custom_commands.json"
@@ -169,6 +218,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "agent_name": os.getenv("AGENT_NAME", "Antigravity Agent"),
     "mode": "auto-approve",           # "auto-approve" (--dangerously-skip-permissions), "accept-edits", "plan"
     "model": "auto",                  # Dynamically synced with `agy models` (auto-routes flash for speed / argon for code)
+    "account_tier": "auto",           # "auto" (auto-detect), "free", "pro", "ultra"
     "effort": "auto",                 # "auto", "low", "medium", "high", "xhigh", "max"
     "timeout": 600,                   # Timeout in seconds (0 = infinite)
     "sandbox": False,                 # Run with --sandbox terminal restrictions
@@ -307,8 +357,8 @@ _NPX_CMD = "npx.cmd" if (IS_WINDOWS and shutil.which("npx.cmd")) else "npx"
 RECOMMENDED_MCP_SERVERS: List[Dict[str, Any]] = [
     {
         "id": "playwright",
-        "title": "Playwright MCP (Navigation Web & Captures)",
-        "description": "Contrôle complet d'un navigateur headless (clics, formulaires, SPA JS, captures d'écran) — Officiel Microsoft",
+        "title": "Playwright MCP (Browser Navigation & Screenshots)",
+        "description": "Full headless browser control (clicks, forms, single-page JS apps, screenshots) — Official Microsoft",
         "command": _NPX_CMD,
         "args": ["-y", "@playwright/mcp@latest", "--headless"],
         "env_key": None,
@@ -316,18 +366,18 @@ RECOMMENDED_MCP_SERVERS: List[Dict[str, Any]] = [
     },
     {
         "id": "firecrawl",
-        "title": "Firecrawl MCP (Scraping Web & Extraction Markdown)",
-        "description": "Transforme n'importe quel site web en Markdown propre, crawle et extrait des données structurées",
+        "title": "Firecrawl MCP (Web Scraping & Markdown Extraction)",
+        "description": "Converts any web page into clean Markdown, crawls full sites and extracts structured web data",
         "command": _NPX_CMD,
         "args": ["-y", "firecrawl-mcp"],
         "env_key": "FIRECRAWL_API_KEY",
-        "env_prompt": "Clé API Firecrawl (optionnel, sur firecrawl.dev — Entrée pour configurer plus tard)",
+        "env_prompt": "Firecrawl API key (optional, from firecrawl.dev — Press Enter to configure later)",
         "default_selected": True,
     },
     {
         "id": "docker",
-        "title": "Docker MCP (Conteneurs, Logs & Stacks Docker)",
-        "description": "Pilotez vos conteneurs, images, volumes, réseaux et logs Docker directement depuis Telegram",
+        "title": "Docker MCP (Containers, Logs & Docker Stacks)",
+        "description": "Control Docker containers, images, volumes, networks, and logs directly through Telegram",
         "command": _NPX_CMD,
         "args": ["-y", "@quantgeekdev/docker-mcp"],
         "env_key": None,
@@ -335,8 +385,8 @@ RECOMMENDED_MCP_SERVERS: List[Dict[str, Any]] = [
     },
     {
         "id": "context7",
-        "title": "Context7 MCP (Documentation Code Temps Réel)",
-        "description": "Injecte la documentation officielle à jour de toutes les librairies/frameworks (React, FastAPI, etc.)",
+        "title": "Context7 MCP (Real-Time Code Documentation)",
+        "description": "Injects up-to-date official documentation for any library or framework (React, FastAPI, PyTorch, etc.)",
         "command": _NPX_CMD,
         "args": ["-y", "@upstash/context7-mcp"],
         "env_key": None,
@@ -344,8 +394,8 @@ RECOMMENDED_MCP_SERVERS: List[Dict[str, Any]] = [
     },
     {
         "id": "sequential-thinking",
-        "title": "Sequential Thinking MCP (Raisonnement Avancé)",
-        "description": "Décomposition structurée de problèmes complexes en étapes révisables avec arbre de réflexion",
+        "title": "Sequential Thinking MCP (Advanced Multi-Step Reasoning)",
+        "description": "Structured problem decomposition with dynamic thought revisitation and branching logic",
         "command": _NPX_CMD,
         "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
         "env_key": None,
@@ -353,12 +403,12 @@ RECOMMENDED_MCP_SERVERS: List[Dict[str, Any]] = [
     },
     {
         "id": "github",
-        "title": "GitHub MCP (Dépôts, Pull Requests, Issues & Code)",
-        "description": "Gestion complète de vos dépôts GitHub, branches, commits, Issues et Pull Requests",
+        "title": "GitHub MCP (Repositories, Pull Requests, Issues & Code)",
+        "description": "Complete management of GitHub repositories, branches, commits, Issues, and Pull Requests",
         "command": _NPX_CMD,
         "args": ["-y", "@modelcontextprotocol/server-github"],
         "env_key": "GITHUB_PERSONAL_ACCESS_TOKEN",
-        "env_prompt": "Token GitHub Personal Access Token (optionnel — Entrée pour passer)",
+        "env_prompt": "GitHub Personal Access Token (optional — Press Enter to skip)",
         "default_selected": False,
     },
 ]

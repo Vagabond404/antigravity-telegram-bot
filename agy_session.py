@@ -24,13 +24,34 @@ QUOTA_ERROR_KEYWORDS = [
     "resource_exhausted",
     "resource has been exhausted",
     "quota exceeded",
+    "quota reached",
     "insufficient_quota",
     "rate_limit_exceeded",
     "rate limit exceeded",
+    "rate limit",
+    "rate-limit",
     "too many requests",
     "token limit exhausted",
     "token limit",
+    "token quota",
+    "capacity exhausted",
+    "exhausted your capacity",
+    "out of credits",
+    "credit limit",
+    "no credits remaining",
+    "credits exhausted",
+    "credit balance",
     "429",
+    "crédit",
+    "crédits",
+    "épuisé",
+    "quota dépassé",
+    "capacité épuisée",
+    "capacité",
+    "veuillez patienter",
+    "try again in",
+    "resets in",
+    "reset in",
 ]
 
 
@@ -536,27 +557,28 @@ class AgySession:
                         ui_task.cancel()
 
                 if self._is_aborted:
-                    return ("🛑 Exécution interrompue par l'utilisateur.", False, False)
+                    return ("🛑 Execution stopped by user.", False, False)
 
                 final_text = final_response or "".join(accumulated_text).strip()
                 if got_success or final_text:
                     self._has_active_session = True
-                    return (final_text or "✅ Action exécutée avec succès.", True, False)
+                    return (final_text or "✅ Action completed successfully.", True, False)
 
                 if self._is_aborted:
-                    return ("🛑 Exécution interrompue par l'utilisateur.", False, False)
+                    return ("🛑 Execution stopped by user.", False, False)
 
                 stderr_text = "\n".join(self._stderr_buffer).strip()
-                err_msg = stderr_text or "Le processus agy s'est interrompu sans réponse."
+                err_msg = stderr_text or "The agy process stopped without response."
                 if is_quota_error(err_msg):
+                    self._active_conversation_id = None
                     return (err_msg, False, True)
-                return (f"⚠️ Erreur CLI : {err_msg}", False, False)
+                return (f"⚠️ CLI Error: {err_msg}", False, False)
 
             except Exception as e:
                 if self._is_aborted:
-                    return ("🛑 Exécution interrompue par l'utilisateur.", False, False)
+                    return ("🛑 Execution stopped by user.", False, False)
                 logger.error(f"Exception during execute_turn: {e}", exc_info=True)
-                return (f"❌ Erreur inattendue : {e}", False, False)
+                return (f"❌ Unexpected Error: {e}", False, False)
             finally:
                 self._turn_in_progress = False
                 self._is_aborted = False
@@ -565,44 +587,44 @@ class AgySession:
     def _format_tool_action(tool_name: str, tool_args: dict, prefix: str = "") -> str:
         if tool_name == "run_command":
             cmd_line = tool_args.get("CommandLine", "")
-            return f"{prefix}⚙️ Commande : {cmd_line[:60]}"
+            return f"{prefix}⚙️ Command: {cmd_line[:60]}"
         if tool_name == "view_file":
             fpath = str(tool_args.get("AbsolutePath", "")).replace("\\", "/")
-            return f"{prefix}📄 Lecture : {fpath.split('/')[-1]}"
+            return f"{prefix}📄 Reading: {fpath.split('/')[-1]}"
         if tool_name in ("write_to_file", "replace_file_content", "multi_replace_file_content"):
             fpath = str(tool_args.get("TargetFile", "")).replace("\\", "/")
-            return f"{prefix}✏️ Écriture : {fpath.split('/')[-1]}"
+            return f"{prefix}✏️ Writing: {fpath.split('/')[-1]}"
         if tool_name == "search_web":
             q = tool_args.get("query", "")
-            return f"{prefix}🔍 Recherche Web : {q[:45]}"
+            return f"{prefix}🔍 Web Search: {q[:45]}"
         if tool_name == "read_url_content":
             u = tool_args.get("Url", "")
-            return f"{prefix}🌐 Lecture URL : {u[:45]}"
+            return f"{prefix}🌐 Fetching URL: {u[:45]}"
         if tool_name == "generate_image":
             p = tool_args.get("ImageName") or tool_args.get("Prompt", "")
-            return f"{prefix}🎨 Génération d'image : {str(p)[:40]}"
+            return f"{prefix}🎨 Image Generation: {str(p)[:40]}"
         if tool_name == "invoke_subagent":
             subs = tool_args.get("Subagents", [])
             if isinstance(subs, list) and subs:
                 roles = ", ".join(str(s.get("Role", s.get("TypeName", "Agent"))) for s in subs[:3])
-                return f"🤖 Lancement Sous-Agent(s) : {roles}"
-            return "🤖 Lancement de Sous-Agent(s) en parallèle..."
+                return f"🤖 Invoking Subagent(s): {roles}"
+            return "🤖 Invoking Subagent(s) in parallel..."
         if tool_name == "define_subagent":
             name = tool_args.get("name", "custom")
-            return f"🧩 Définition du Sous-Agent : {name}"
+            return f"🧩 Defining Subagent: {name}"
         if tool_name == "manage_subagents":
             act = tool_args.get("Action", "list")
-            return f"🤖 Gestion des Sous-Agents ({act})..."
+            return f"🤖 Managing Subagents ({act})..."
         if tool_name == "send_message":
             rec = str(tool_args.get("Recipient", ""))[:12]
-            return f"💬 Message au Sous-Agent ({rec})..."
+            return f"💬 Messaging Subagent ({rec})..."
         if tool_name == "call_mcp_tool":
             srv = tool_args.get("ServerName", "MCP")
             tname = tool_args.get("ToolName", "")
-            return f"{prefix}🔌 MCP [{srv}] : {tname}"
+            return f"{prefix}🔌 MCP [{srv}]: {tname}"
         if tool_name.startswith("browser_"):
-            return f"{prefix}🌐 Navigateur : {tool_name.replace('browser_', '')}"
-        return f"{prefix}🔧 Outil : {tool_name}"
+            return f"{prefix}🌐 Browser: {tool_name.replace('browser_', '')}"
+        return f"{prefix}🔧 Tool: {tool_name}"
 
 
 # Singleton instance

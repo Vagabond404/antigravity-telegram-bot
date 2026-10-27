@@ -1,20 +1,29 @@
 """
-i18n.py - Universal Internationalization & Language Localization Engine
-Supports English ('en', default) and French ('fr'), with automatic language detection,
-per-user language preferences, and full translation dictionaries for all system messages.
+i18n.py - Universal Internationalization & Dynamic Language Localization Engine
+Supports English ('en', default) and French ('fr') natively, with automatic language detection,
+per-user language preferences, persistent locale storage in `locales/{lang}.json`,
+and dynamic translation support for any world language.
 """
 
+import os
 import re
+import json
 import logging
-from typing import Dict, Any, Optional
+from pathlib import Path
+from typing import Dict, Any, Optional, List
+
+from config import BASE_DIR, LOCALES_DIR
 
 logger = logging.getLogger("i18n")
 
 DEFAULT_LANGUAGE = "en"
-SUPPORTED_LANGUAGES = ["en", "fr"]
+SUPPORTED_LANGUAGES = ["en", "fr", "es", "de", "it", "pt", "ru", "ja", "zh", "ar"]
 
-# In-memory user language cache {user_id: "en" | "fr"}
+# In-memory user language cache {user_id: "en" | "fr" | ...}
 _user_languages: Dict[int, str] = {}
+
+# In-memory custom/external locale cache {lang_code: {key: text}}
+_loaded_locales: Dict[str, Dict[str, str]] = {}
 
 # Common French linguistic markers for dynamic auto-detection
 FRENCH_MARKERS = [
@@ -35,6 +44,18 @@ ENGLISH_MARKERS = [
     r"\bgroup\b", r"\bsettings\b", r"\benable\b", r"\bdisable\b", r"\bupdate\b",
     r"\bleave\b", r"\bsilent\b", r"\blisten\b", r"\breply\b", r"\bsummarize\b",
     r"\bwith\b", r"\bfor\b", r"\bin\b", r"\bon\b", r"\bthe\b", r"\bthis\b",
+]
+
+# Common Spanish linguistic markers
+SPANISH_MARKERS = [
+    r"\bhola\b", r"\bgracias\b", r"\bpor\s+favor\b", r"\bbuenos\s+d[ií]as\b",
+    r"\bc[oó]mo\b", r"\bpor\s+qu[eé]\b", r"\bpuedes\b", r"\bayuda\b",
+]
+
+# Common German linguistic markers
+GERMAN_MARKERS = [
+    r"\bhallo\b", r"\bdanke\b", r"\bbitte\b", r"\bguten\s+tag\b",
+    r"\bwie\b", r"\bwarum\b", r"\bkannst\s+du\b", r"\bhilfe\b",
 ]
 
 TRANSLATIONS: Dict[str, Dict[str, str]] = {
@@ -71,6 +92,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
             "Your universal, autonomous AI gateway powered by the latest <b>Google Antigravity CLI</b>.\n\n"
             "⚡ <b>Core Capabilities:</b>\n"
             "• 🧠 <b>Dynamic Models & Effort:</b> Real-time CLI models & deep thinking (<code>/settings</code>, <code>/models</code>, <code>/effort</code>)\n"
+            "• 📊 <b>Quota Gauges:</b> Real-time token usage breakdown for Gemini, Argon & Claude (<code>/usage</code>)\n"
             "• 🤝 <b>Multi-Agent Swarm:</b> Coordinated parallel subagents (<code>/agents</code>, <code>/teamwork</code>)\n"
             "• 📤 <b>Full Multimedia:</b> Send & receive photos, videos, audio, voice notes, PDFs & archives\n"
             "• 🔌 <b>CLI Ecosystem:</b> 1-click management of <code>/mcp</code> servers, <code>/plugins</code>, <code>/remote</code>, and <code>/sessions</code>\n"
@@ -83,6 +105,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
             "Votre passerelle IA autonome universelle propulsée par la dernière version de <b>Google Antigravity CLI</b>.\n\n"
             "⚡ <b>Capacités Intégrées :</b>\n"
             "• 🧠 <b>Modèles & Effort Dynamiques :</b> Sélection en direct depuis <code>agy models</code> et effort jusqu'à <code>xhigh</code>/<code>max</code> (<code>/settings</code>, <code>/models</code>, <code>/effort</code>)\n"
+            "• 📊 <b>Jauges de Quotas :</b> Consommation en direct des tokens Gemini, Argon & Claude (<code>/usage</code>)\n"
             "• 🤝 <b>Essaim Multi-Agents :</b> Orchestration parallèle de sous-agents autonomes (<code>/agents</code>, <code>/teamwork</code>)\n"
             "• 📤 <b>Multimédia Complet :</b> Envoyez et recevez images, vidéos, audios, vocaux, PDF et archives\n"
             "• 🔌 <b>Écosystème CLI :</b> Gestion en 1 clic des serveurs <code>/mcp</code>, <code>/plugins</code>, <code>/remote</code> et <code>/sessions</code>\n"
@@ -98,78 +121,97 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "fr": "📚 <b>Guide Complet — Antigravity Telegram Agent</b>",
     },
 
-    # Groups & Channels
-    "groups_dashboard_title": {
-        "en": "🏫 <b>Telegram Groups & Channels Management</b>",
-        "fr": "🏫 <b>Gestion des Groupes & Canaux Telegram</b>",
-    },
-    "groups_dashboard_desc": {
-        "en": (
-            "• <b>Registered Groups:</b> <code>{total}</code>\n"
-            "• 🔇 <b>Silent Listen Mode:</b> <code>{passive}</code>\n"
-            "• 💬 <b>Interactive Mode (@mentions):</b> <code>{active}</code>\n\n"
-            "🛡️ <i>In Silent Listen Mode (default), the bot observes messages, logs discussions for the AI agent, "
-            "and NEVER sends any messages or error notifications in the group. Click a group below to customize its mission or permissions:</i>\n\n"
-            "💡 <i>Tip: The bot automatically registers any group it is in as soon as a message is posted. You can also add one manually via <code>/groups add &lt;id&gt; [Title]</code>.</i>"
-        ),
-        "fr": (
-            "• <b>Groupes enregistrés :</b> <code>{total}</code>\n"
-            "• 🔇 <b>Mode Écoute Seule (Silencieux) :</b> <code>{passive}</code>\n"
-            "• 💬 <b>Mode Interactif (@mentions) :</b> <code>{active}</code>\n\n"
-            "🛡️ <i>En mode Écoute Seule (par défaut), le bot observe les messages, enregistre le contexte pour l'agent IA, "
-            "et n'envoie JAMAIS le moindre message ou refus d'accès dans le groupe. Cliquez sur un groupe ci-dessous pour modifier sa mission ou ses droits :</i>\n\n"
-            "💡 <i>Astuce : Le bot enregistre automatiquement tout groupe dès qu'un message y est posté. Vous pouvez aussi l'ajouter avec <code>/groups add &lt;id&gt; [Titre]</code>.</i>"
-        ),
-    },
-    "new_group_alert": {
-        "en": (
-            "👋 <b>New Group Discovered!</b>\n\n"
-            "The bot detected and registered the group <b>{title}</b>.\n"
-            "• <b>Group ID:</b> <code>{chat_id}</code>\n"
-            "• <b>Current Mode:</b> 🔇 <b>Silent Listen Only</b> (100% quiet)\n"
-            "• <b>Read Access:</b> ✅ Enabled\n"
-            "• <b>Write Access:</b> ⛔ Disabled (Never speaks in group)\n\n"
-            "🛡️ <i>The AI agent is now observing this group. You can ask the agent in private chat to summarize discussions, "
-            "track announcements, or watch for specific events.</i>"
-        ),
-        "fr": (
-            "👋 <b>Nouveau Groupe Détecté !</b>\n\n"
-            "Le bot a détecté et enregistré le groupe <b>{title}</b>.\n"
-            "• <b>ID Groupe :</b> <code>{chat_id}</code>\n"
-            "• <b>Mode Actuel :</b> 🔇 <b>Écoute Seule (Silencieux)</b> (100% discret)\n"
-            "• <b>Accès Lecture :</b> ✅ Activé\n"
-            "• <b>Accès Écriture :</b> ⛔ Désactivé (Ne parle jamais dans le groupe)\n\n"
-            "🛡️ <i>L'agent IA observe désormais ce groupe. Vous pouvez lui demander en privé de résumer les échanges, "
-            "suivre des annonces ou surveiller des devoirs/tâches.</i>"
-        ),
-    },
-    "group_unauthorized_alert": {
-        "en": (
-            "⚠️ <b>Unauthorized Group Addition Blocked!</b>\n\n"
-            "User <b>{name}</b> (<code>{uid}</code>) attempted to add the bot to group:\n"
-            "• <b>Title:</b> {title}\n"
-            "• <b>ID:</b> <code>{chat_id}</code>\n\n"
-            "🛡️ <i>The bot automatically left the group immediately to protect your privacy.</i>"
-        ),
-        "fr": (
-            "⚠️ <b>Tentative d'Ajout Non-Autorisé Bloquée !</b>\n\n"
-            "L'utilisateur <b>{name}</b> (<code>{uid}</code>) a tenté d'ajouter le bot au groupe :\n"
-            "• <b>Titre :</b> {title}\n"
-            "• <b>ID :</b> <code>{chat_id}</code>\n\n"
-            "🛡️ <i>Le bot a immédiatement quitté le groupe pour préserver votre vie privée.</i>"
-        ),
-    },
-
     # Settings & Buttons
     "btn_refresh": {"en": "🔄 Refresh", "fr": "🔄 Actualiser"},
     "btn_settings": {"en": "⬅️ Settings", "fr": "⬅️ Paramètres"},
     "btn_close": {"en": "❌ Close", "fr": "❌ Fermer"},
     "btn_back": {"en": "⬅️ Back", "fr": "⬅️ Retour"},
     "btn_groups": {"en": "🏫 Groups (/groups)", "fr": "🏫 Groupes (/groups)"},
-    "btn_language": {"en": "🌐 Language (EN / FR)", "fr": "🌐 Langue (EN / FR)"},
+    "btn_language": {"en": "🌐 Language", "fr": "🌐 Langue"},
     "btn_update": {"en": "🔄 System Update (/update)", "fr": "🔄 Maj Système (/update)"},
     "btn_users": {"en": "👥 Users & Access", "fr": "👥 Utilisateurs & Accès"},
+    "btn_reset_cooldowns": {"en": "🔄 Reset Cooldown Locks", "fr": "🔄 Réinitialiser les Verrous"},
+    "btn_abort": {"en": "🛑 Stop Execution", "fr": "🛑 Stopper l'exécution"},
+    "btn_clear_session": {"en": "🗑️ New Conversation (/clear)", "fr": "🗑️ Nouvelle Discussion (/clear)"},
+    "btn_account_tier": {"en": "🏷️ Google Plan (Free/Pro/Ultra)", "fr": "🏷️ Forfait Google (Gratuit/Pro/Ultra)"},
+
+    # Quota & Model notices
+    "quota_reached_fallback": {
+        "en": "⚠️ Quota limit on <code>{old_model}</code> reached. Automatically switching to <code>{new_model}</code>...",
+        "fr": "⚠️ Quota <code>{old_model}</code> atteint. Bascule automatique sur <code>{new_model}</code>...",
+    },
+    "quota_exhausted_all": {
+        "en": (
+            "💳 <b>Quota Limit Temporarily Reached</b>\n\n"
+            "All candidate AI models have reached their rate limit for this rolling cycle.\n"
+            "<pre>{error}</pre>\n\n"
+            "💡 Type <code>/usage</code> to check your token gauges or click below to reset locks."
+        ),
+        "fr": (
+            "💳 <b>Crédits / Quota temporairement atteints</b>\n\n"
+            "Tous les modèles testés ont atteint leur limite pour ce cycle glissant.\n"
+            "<pre>{error}</pre>\n\n"
+            "💡 Tapez <code>/usage</code> pour voir vos jauges ou cliquez ci-dessous pour réinitialiser."
+        ),
+    },
+    "auth_required": {
+        "en": (
+            "🔐 <b>Google Antigravity Authentication Required!</b>\n\n"
+            "Please run <code>agy</code> via SSH or terminal on your server to complete Google login."
+        ),
+        "fr": (
+            "🔐 <b>Authentification Google Antigravity requise sur le serveur !</b>\n\n"
+            "Tapez <code>agy</code> en SSH ou terminal sur votre serveur pour vous connecter."
+        ),
+    },
+    "exec_interrupted": {
+        "en": "🛑 Execution stopped by user.",
+        "fr": "🛑 Exécution interrompue par l'utilisateur.",
+    },
+    "action_in_progress": {
+        "en": "Processing in progress...",
+        "fr": "Traitement en cours...",
+    },
+    "analyzing": {
+        "en": "🧠 Analyzing & Reasoning...",
+        "fr": "🧠 Analyse & Réflexion en cours...",
+    },
 }
+
+
+def load_locale_file(lang: str) -> Dict[str, str]:
+    """Load a persistent JSON locale file from locales/{lang}.json if available."""
+    if lang in _loaded_locales:
+        return _loaded_locales[lang]
+
+    loc_file = LOCALES_DIR / f"{lang}.json"
+    if loc_file.is_file():
+        try:
+            data = json.loads(loc_file.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                _loaded_locales[lang] = data
+                return data
+        except Exception as e:
+            logger.warning(f"Failed to load locale file {loc_file}: {e}")
+
+    _loaded_locales[lang] = {}
+    return {}
+
+
+def save_locale_file(lang: str, translations: Dict[str, str]) -> bool:
+    """Save or update custom translated strings into locales/{lang}.json."""
+    try:
+        LOCALES_DIR.mkdir(parents=True, exist_ok=True)
+        loc_file = LOCALES_DIR / f"{lang}.json"
+        existing = load_locale_file(lang)
+        merged = {**existing, **translations}
+        loc_file.write_text(json.dumps(merged, indent=2, ensure_ascii=False), encoding="utf-8")
+        _loaded_locales[lang] = merged
+        logger.info(f"Saved {len(merged)} translated strings to {loc_file}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save locale file for {lang}: {e}")
+        return False
 
 
 def detect_language(text: str, user_telegram_lang: Optional[str] = None) -> str:
@@ -178,22 +220,35 @@ def detect_language(text: str, user_telegram_lang: Optional[str] = None) -> str:
     Defaults to 'en' (English).
     """
     if not text or len(text.strip()) < 3:
-        if user_telegram_lang and user_telegram_lang.lower().startswith("fr"):
-            return "fr"
+        if user_telegram_lang:
+            code = user_telegram_lang.lower().split("-")[0].split("_")[0]
+            if code in SUPPORTED_LANGUAGES:
+                return code
         return DEFAULT_LANGUAGE
 
     lower = text.lower()
 
     fr_matches = sum(1 for p in FRENCH_MARKERS if re.search(p, lower))
     en_matches = sum(1 for p in ENGLISH_MARKERS if re.search(p, lower))
+    es_matches = sum(1 for p in SPANISH_MARKERS if re.search(p, lower))
+    de_matches = sum(1 for p in GERMAN_MARKERS if re.search(p, lower))
 
-    if fr_matches > en_matches and fr_matches >= 1:
-        return "fr"
-    if en_matches > fr_matches and en_matches >= 1:
-        return "en"
+    scores = [
+        ("fr", fr_matches),
+        ("en", en_matches),
+        ("es", es_matches),
+        ("de", de_matches),
+    ]
+    scores.sort(key=lambda x: x[1], reverse=True)
 
-    if user_telegram_lang and user_telegram_lang.lower().startswith("fr"):
-        return "fr"
+    if scores[0][1] >= 1 and scores[0][1] > scores[1][1]:
+        return scores[0][0]
+
+    if user_telegram_lang:
+        code = user_telegram_lang.lower().split("-")[0].split("_")[0]
+        if code in SUPPORTED_LANGUAGES:
+            return code
+
     return DEFAULT_LANGUAGE
 
 
@@ -203,9 +258,10 @@ def get_user_language(user_id: int, fallback: str = DEFAULT_LANGUAGE) -> str:
 
 
 def set_user_language(user_id: int, lang: str) -> None:
-    """Explicitly set user's preferred language ('en' | 'fr')."""
-    if lang in SUPPORTED_LANGUAGES:
-        _user_languages[user_id] = lang
+    """Explicitly set user's preferred language."""
+    code = (lang or "").lower().strip()
+    if code:
+        _user_languages[user_id] = code
 
 
 def detect_and_set_language(user_id: int, text: str, user_telegram_lang: Optional[str] = None) -> str:
@@ -218,6 +274,11 @@ def detect_and_set_language(user_id: int, text: str, user_telegram_lang: Optiona
 def t(key: str, lang: Optional[str] = None, user_id: Optional[int] = None, **kwargs) -> str:
     """
     Retrieve translated string for the given key and language.
+    Checks:
+      1. Pre-compiled TRANSLATIONS dictionary
+      2. Dynamically loaded locales/{lang}.json
+      3. English fallback
+      4. Key itself
     Substitutes format arguments safely.
     """
     if not lang:
@@ -226,11 +287,20 @@ def t(key: str, lang: Optional[str] = None, user_id: Optional[int] = None, **kwa
         else:
             lang = DEFAULT_LANGUAGE
 
-    if lang not in SUPPORTED_LANGUAGES:
-        lang = DEFAULT_LANGUAGE
+    lang = lang.lower().strip()
 
+    # 1. Check in-memory pre-compiled dictionary
     entry = TRANSLATIONS.get(key, {})
-    text = entry.get(lang) or entry.get("en") or key
+    text = entry.get(lang)
+
+    # 2. Check loaded locale file for this language
+    if not text:
+        loc = load_locale_file(lang)
+        text = loc.get(key)
+
+    # 3. Fallback to English
+    if not text:
+        text = entry.get("en") or load_locale_file("en").get(key) or key
 
     if kwargs:
         try:

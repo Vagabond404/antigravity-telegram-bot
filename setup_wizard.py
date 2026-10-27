@@ -2,6 +2,7 @@
 """
 Antigravity Telegram Agent — Interactive Onboarding & Setup Wizard
 Cross-Platform (Windows, Linux, macOS)
+English default with multi-language and multi-account tier support.
 """
 import os
 import sys
@@ -37,7 +38,7 @@ RESET = "\033[0m"
 
 def banner():
     print(f"\n{CYAN}{BOLD}=================================================================={RESET}")
-    print(f"{CYAN}{BOLD}   🚀 ANTIGRAVITY TELEGRAM AGENT v4.0 — ASSISTANT D'INSTALLATION   {RESET}")
+    print(f"{CYAN}{BOLD}   🚀 ANTIGRAVITY TELEGRAM AGENT v4.2 — SETUP WIZARD             {RESET}")
     print(f"{CYAN}{BOLD}=================================================================={RESET}\n")
 
 
@@ -68,7 +69,7 @@ def _ensure_unix_global_symlink(agy_bin: str) -> None:
 
 def install_or_update_agy() -> str:
     """Ensure Antigravity CLI (agy) is installed and up to date."""
-    print(f"{BOLD}[1/5] Vérification d'Antigravity CLI (agy)...{RESET}")
+    print(f"{BOLD}[1/5] Checking Antigravity CLI (agy)...{RESET}")
     agy_bin = find_agy()
     exists = shutil.which(agy_bin) or Path(agy_bin).exists()
 
@@ -77,16 +78,16 @@ def install_or_update_agy() -> str:
         try:
             res = subprocess.run([agy_bin, "--version"], capture_output=True, text=True, timeout=10)
             ver = (res.stdout or res.stderr).strip()
-            print(f"  {GREEN}✔ Antigravity CLI détecté :{RESET} {ver} ({agy_bin})")
-            ans = input(f"  Voulez-vous vérifier les mises à jour d'Antigravity CLI ? [O/n] : ").strip().lower()
-            if ans in ("", "o", "oui", "y", "yes"):
-                print("  ⏳ Mise à jour d'Antigravity CLI (`agy update`)...")
+            print(f"  {GREEN}✔ Antigravity CLI detected:{RESET} {ver} ({agy_bin})")
+            ans = input(f"  Would you like to check for Antigravity CLI updates? [Y/n]: ").strip().lower()
+            if ans in ("", "y", "yes", "o", "oui"):
+                print("  ⏳ Updating Antigravity CLI (`agy update`)...")
                 subprocess.run([agy_bin, "update"], timeout=120)
             return agy_bin
         except Exception as e:
-            print(f"  {YELLOW}⚠ Erreur lors de l'exécution de {agy_bin}: {e}{RESET}")
+            print(f"  {YELLOW}⚠ Warning running {agy_bin}: {e}{RESET}")
 
-    print(f"  {YELLOW}⚡ Antigravity CLI n'est pas encore installé. Installation automatique...{RESET}")
+    print(f"  {YELLOW}⚡ Antigravity CLI is not yet installed. Running automatic installer...{RESET}")
     try:
         if IS_WINDOWS:
             cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
@@ -96,15 +97,15 @@ def install_or_update_agy() -> str:
             cmd = ["bash", "-c", "curl -fsSL https://antigravity.google/cli/install.sh | bash"]
             subprocess.run(cmd, check=True)
     except Exception as e:
-        print(f"  {RED}❌ Échec de l'installation automatique d'Antigravity CLI : {e}{RESET}")
-        print(f"  Vous pouvez l'installer manuellement depuis : https://antigravity.google/cli")
+        print(f"  {RED}❌ Automatic installation of Antigravity CLI failed: {e}{RESET}")
+        print(f"  You can install it manually from: https://antigravity.google/cli")
 
     agy_bin = find_agy()
     if shutil.which(agy_bin) or Path(agy_bin).exists():
         _ensure_unix_global_symlink(agy_bin)
-        print(f"  {GREEN}✔ Antigravity CLI installé avec succès : {agy_bin}{RESET}")
+        print(f"  {GREEN}✔ Antigravity CLI installed successfully: {agy_bin}{RESET}")
     else:
-        print(f"  {YELLOW}⚠ Binaire `agy` non trouvé dans le PATH standard. Assurez-vous qu'il est installé.{RESET}")
+        print(f"  {YELLOW}⚠ `agy` binary not found in standard PATH. Please ensure it is installed.{RESET}")
     return agy_bin
 
 
@@ -126,11 +127,11 @@ def _is_agy_onboarded() -> bool:
 
 
 def check_agy_auth(agy_bin: str) -> list:
-    """Verify that Antigravity CLI is truly authenticated with Google and list models."""
-    print(f"\n{BOLD}[2/5] Connexion & Authentification Antigravity CLI...{RESET}")
+    """Verify that Antigravity CLI is authenticated with Google and list models."""
+    print(f"\n{BOLD}[2/5] Antigravity CLI Authentication & Google Account...{RESET}")
     models = []
     if not (shutil.which(agy_bin) or Path(agy_bin).exists()):
-        print(f"  {YELLOW}⚠ Antigravity CLI introuvable, étape d'authentification ignorée.{RESET}")
+        print(f"  {YELLOW}⚠ Antigravity CLI not found; skipping auth verification.{RESET}")
         return models
 
     agy_env = {**os.environ, "HOME": os.environ.get("HOME") or str(Path.home())}
@@ -154,36 +155,35 @@ def check_agy_auth(agy_bin: str) -> list:
     onboarded = _is_agy_onboarded()
 
     if onboarded and models:
-        print(f"  {GREEN}✔ Session Google Antigravity CLI active ({len(models)} modèles disponibles) !{RESET}")
+        print(f"  {GREEN}✔ Active Google Antigravity session verified ({len(models)} models available)!{RESET}")
         for mid, mname in models[:6]:
             print(f"    • {mname} ({mid})")
-        reauth = input("  Souhaitez-vous reconnecter un autre compte Google ? [o/N] : ").strip().lower()
-        if reauth not in ("o", "oui", "y", "yes"):
+        reauth = input("  Would you like to connect a different Google account? [y/N]: ").strip().lower()
+        if reauth not in ("y", "yes", "o", "oui"):
             return models
 
-    print(f"  {YELLOW}⚠ Connexion de votre compte Google à Antigravity CLI requise.{RESET}")
-    print(f"  Nous allons lancer `{agy_bin}` en mode interactif pour afficher le lien de connexion Google.")
-    print(f"  {CYAN}Instructions (notamment sur serveur SSH) :{RESET}")
-    print("    1. Ouvrez l'URL Google affichée dans votre navigateur et connectez-vous.")
+    print(f"  {YELLOW}⚠ Google account authentication required for Antigravity CLI.{RESET}")
+    print(f"  We will launch `{agy_bin}` interactively to display your Google sign-in URL.")
+    print(f"  {CYAN}Instructions (especially over SSH server):{RESET}")
+    print("    1. Open the displayed Google URL in your browser and sign in.")
     print(
-        "    2. Si le navigateur redirige vers une page `http://localhost:...` inaccessible depuis votre PC,\n"
-        f"       {BOLD}copiez l'URL complète `http://localhost:...` de la barre d'adresse{RESET} et collez-la dans ce terminal."
+        "    2. If the browser redirects to a `http://localhost:...` page on a remote server,\n"
+        f"       {BOLD}copy the full `http://localhost:...` URL from the address bar{RESET} and paste it into this terminal."
     )
-    print(f"    3. Dès que l'interface Antigravity CLI est connectée, appuyez sur {BOLD}Ctrl+C{RESET} (ou tapez {BOLD}/exit{RESET}) pour continuer l'installation !\n")
-    ans = input("  Appuyez sur [Entrée] pour lancer la connexion Google Antigravity CLI (ou 's' pour passer) : ").strip().lower()
+    print(f"    3. Once the Antigravity CLI connects, press {BOLD}Ctrl+C{RESET} (or type {BOLD}/exit{RESET}) to resume setup!\n")
+    ans = input("  Press [Enter] to launch Google sign-in (or 's' to skip): ").strip().lower()
     if ans != "s":
         try:
-            # Launch interactive `agy` with SSH_CONNECTION=1 on Linux so token is stored in file-based storage
             subprocess.run([agy_bin], env=agy_env)
         except KeyboardInterrupt:
             pass
         except Exception as e:
-            print(f"  {YELLOW}Note : {e}{RESET}")
+            print(f"  {YELLOW}Note: {e}{RESET}")
         models, _ = _try_list_models()
         if _is_agy_onboarded():
-            print(f"\n  {GREEN}✔ Connexion Google Antigravity CLI confirmée ({len(models)} modèles disponibles) !{RESET}")
+            print(f"\n  {GREEN}✔ Google Antigravity authentication confirmed ({len(models)} models available)!{RESET}")
         else:
-            print(f"\n  {YELLOW}ℹ Vous pourrez vous connecter à tout moment en tapant : {BOLD}agy{RESET}")
+            print(f"\n  {YELLOW}ℹ You can authenticate at any time in terminal by running: {BOLD}agy{RESET}")
 
     return models
 
@@ -209,8 +209,8 @@ def poll_admin_from_telegram(token: str, bot_username: str) -> tuple[int | None,
     """Wait for the user to send /start to their bot and grab their user ID."""
     if not requests:
         return None, None
-    print(f"\n  📲 Ouvrez Telegram et envoyez {BOLD}/start{RESET} à {CYAN}@{bot_username}{RESET} maintenant !")
-    print("  ⏳ En attente de votre message sur Telegram (60s max, Ctrl+C pour passer)...")
+    print(f"\n  📲 Open Telegram and send {BOLD}/start{RESET} to {CYAN}@{bot_username}{RESET} now!")
+    print("  ⏳ Waiting for your message on Telegram (60s timeout, Ctrl+C to skip)...")
     offset = None
     try:
         r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates", params={"timeout": 1}, timeout=6).json()
@@ -240,7 +240,7 @@ def poll_admin_from_telegram(token: str, bot_username: str) -> tuple[int | None,
                                     f"https://api.telegram.org/bot{token}/sendMessage",
                                     json={
                                         "chat_id": uid,
-                                        "text": f"✅ *Connexion Administrateur Réussie !*\n\nBonjour *{uname}* (`{uid}`), votre bot Antigravity v4.0 est maintenant lié à votre compte.",
+                                        "text": f"✅ *Administrator Linked Successfully!*\n\nHello *{uname}* (`{uid}`), your Antigravity v4.2 agent is now connected to your Telegram account.",
                                         "parse_mode": "Markdown",
                                     },
                                     timeout=6,
@@ -254,13 +254,13 @@ def poll_admin_from_telegram(token: str, bot_username: str) -> tuple[int | None,
                 time.sleep(2)
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\n  ⏹ Détection automatique interrompue.")
+        print("\n  ⏹ Automatic detection interrupted.")
     return None, None
 
 
 def configure_telegram_and_admin() -> tuple[str, int | None, str]:
     """Prompt for Telegram token and Admin ID."""
-    print(f"\n{BOLD}[3/5] Configuration du Bot Telegram...{RESET}")
+    print(f"\n{BOLD}[3/5] Telegram Bot Configuration...{RESET}")
     existing_token = ""
     if ENV_FILE.exists():
         for line in ENV_FILE.read_text(encoding="utf-8", errors="ignore").splitlines():
@@ -273,29 +273,29 @@ def configure_telegram_and_admin() -> tuple[str, int | None, str]:
     token = existing_token
     if existing_token:
         masked = existing_token[:8] + "..." + existing_token[-5:]
-        ans = input(f"  Token actuel détecté ({masked}). Le conserver ? [O/n] : ").strip().lower()
-        if ans not in ("", "o", "oui", "y", "yes"):
+        ans = input(f"  Existing token detected ({masked}). Keep it? [Y/n]: ").strip().lower()
+        if ans not in ("", "y", "yes", "o", "oui"):
             token = ""
         else:
             bot_info = validate_telegram_token(token)
 
     while not bot_info:
-        print(f"  💡 Créez un bot ou récupérez votre token auprès de {CYAN}@BotFather{RESET} sur Telegram.")
-        token = input(f"  🔑 Entrez votre {BOLD}TELEGRAM_BOT_TOKEN{RESET} : ").strip().strip('"').strip("'")
+        print(f"  💡 Create a bot or retrieve your token from {CYAN}@BotFather{RESET} on Telegram.")
+        token = input(f"  🔑 Enter your {BOLD}TELEGRAM_BOT_TOKEN{RESET}: ").strip().strip('"').strip("'")
         bot_info = validate_telegram_token(token)
         if bot_info:
-            print(f"  {GREEN}✔ Token valide ! Bot connecté : {bot_info.get('first_name')} (@{bot_info.get('username')}){RESET}")
+            print(f"  {GREEN}✔ Valid token! Bot connected: {bot_info.get('first_name')} (@{bot_info.get('username')}){RESET}")
         else:
-            print(f"  {RED}❌ Token invalide ou impossible de joindre l'API Telegram. Réessayez.{RESET}")
+            print(f"  {RED}❌ Invalid token or unable to reach Telegram API. Please try again.{RESET}")
 
-    bot_username = bot_info.get("username", "votre_bot")
+    bot_username = bot_info.get("username", "your_bot")
 
-    print(f"\n{BOLD}[4/5] Configuration du Compte Administrateur...{RESET}")
-    print("  Comment souhaitez-vous configurer votre compte Administrateur Telegram ?")
-    print(f"    {BOLD}1{RESET}) Détection automatique en envoyant `/start` à @{bot_username} maintenant (Recommandé)")
-    print(f"    {BOLD}2{RESET}) Entrer mon Telegram User ID manuellement")
-    print(f"    {BOLD}3{RESET}) Automatique au premier `/start` après le lancement du bot")
-    choice = input("  Votre choix [1/2/3] (défaut: 1) : ").strip() or "1"
+    print(f"\n{BOLD}[4/5] Administrator Account Setup...{RESET}")
+    print("  How would you like to link your Telegram Administrator account?")
+    print(f"    {BOLD}1{RESET}) Auto-detect by sending `/start` to @{bot_username} now (Recommended)")
+    print(f"    {BOLD}2{RESET}) Enter Telegram User ID manually")
+    print(f"    {BOLD}3{RESET}) Auto-claim on the first `/start` after bot launch")
+    choice = input("  Your choice [1/2/3] (default: 1): ").strip() or "1"
 
     admin_id = None
     admin_name = "Admin"
@@ -304,19 +304,19 @@ def configure_telegram_and_admin() -> tuple[str, int | None, str]:
         admin_id, detected_name = poll_admin_from_telegram(token, bot_username)
         if admin_id:
             admin_name = detected_name or "Admin"
-            print(f"  {GREEN}✔ Administrateur détecté automatiquement : {admin_name} (ID: {admin_id}){RESET}")
+            print(f"  {GREEN}✔ Administrator linked automatically: {admin_name} (ID: {admin_id}){RESET}")
         else:
-            print(f"  {YELLOW}⚠ Aucun message reçu. Le premier utilisateur qui enverra `/start` deviendra Administrateur.{RESET}")
+            print(f"  {YELLOW}⚠ No message received. The first user who sends `/start` will claim Administrator.{RESET}")
     elif choice == "2":
-        raw_id = input("  🆔 Entrez votre Telegram User ID (ex: 123456789) : ").strip()
+        raw_id = input("  🆔 Enter your numeric Telegram User ID (e.g. 123456789): ").strip()
         if raw_id.isdigit():
             admin_id = int(raw_id)
-            admin_name = input("  👤 Votre nom/pseudo Administrateur (défaut: Admin) : ").strip() or "Admin"
-            print(f"  {GREEN}✔ Administrateur configuré : {admin_name} (ID: {admin_id}){RESET}")
+            admin_name = input("  👤 Your Admin name/handle (default: Admin): ").strip() or "Admin"
+            print(f"  {GREEN}✔ Administrator configured: {admin_name} (ID: {admin_id}){RESET}")
         else:
-            print(f"  {YELLOW}⚠ ID non numérique. Le premier utilisateur qui enverra `/start` deviendra Administrateur.{RESET}")
+            print(f"  {YELLOW}⚠ Non-numeric ID. The first user who sends `/start` will claim Administrator.{RESET}")
     else:
-        print(f"  {GREEN}✔ Mode Auto-Claim activé : le premier utilisateur qui enverra `/start` à @{bot_username} sera Administrateur.{RESET}")
+        print(f"  {GREEN}✔ Auto-claim enabled: First user to send `/start` to @{bot_username} becomes Administrator.{RESET}")
 
     return token, admin_id, admin_name
 
@@ -325,7 +325,7 @@ def _ensure_nodejs_available() -> bool:
     """Ensure Node.js / npx is installed so MCP servers can run."""
     if shutil.which("npx") or shutil.which("npx.cmd"):
         return True
-    print(f"  {YELLOW}⚡ Node.js (`npx`) est requis pour exécuter les serveurs MCP. Installation automatique...{RESET}")
+    print(f"  {YELLOW}⚡ Node.js (`npx`) is required for MCP servers. Attempting automatic installation...{RESET}")
     try:
         if IS_WINDOWS:
             if shutil.which("winget"):
@@ -341,44 +341,44 @@ def _ensure_nodejs_available() -> bool:
             elif shutil.which("pacman"):
                 subprocess.run(["bash", "-c", "sudo pacman -Sy --noconfirm nodejs npm || pacman -Sy --noconfirm nodejs npm"], timeout=180)
     except Exception as e:
-        print(f"  {YELLOW}⚠ Impossible d'installer automatiquement Node.js : {e}{RESET}")
+        print(f"  {YELLOW}⚠ Could not install Node.js automatically: {e}{RESET}")
     return bool(shutil.which("npx") or shutil.which("npx.cmd"))
 
 
 def configure_mcp_and_skills(agy_bin: str) -> List[str]:
     """Install the built-in Telegram Bot Mastery skill and offer recommended MCP servers."""
-    print(f"\n{BOLD}[5/5] Skill IA par défaut & Serveurs MCP Recommandés...{RESET}")
+    print(f"\n{BOLD}[5/5] Built-in Skills & Recommended MCP Servers...{RESET}")
 
-    # 1. Install the built-in telegram-bot-mastery skill
+    # 1. Install built-in telegram-bot-mastery skill
     skill_path = config.ensure_default_skill_installed()
     if skill_path:
-        print(f"  {GREEN}✔ Skill par défaut installé :{RESET} {BOLD}telegram-bot-mastery{RESET}")
-        print(f"    (Permet à l'IA de maîtriser toutes les fonctions du bot Telegram, l'envoi de médias, la mémoire Mem0, etc.)")
+        print(f"  {GREEN}✔ Default mastery skill installed:{RESET} {BOLD}telegram-bot-mastery{RESET}")
+        print(f"    (Equips the AI with full bot knowledge, multimedia sending, long-term memory, etc.)")
 
-    # 2. Propose Recommended MCP Servers (Playwright, Firecrawl, Docker, Context7, Sequential Thinking, GitHub)
+    # 2. Recommended MCP Servers Catalog
     catalog = config.RECOMMENDED_MCP_SERVERS
-    print(f"\n  {CYAN}{BOLD}🔌 Catalogue des Serveurs MCP Recommandés :{RESET}")
+    print(f"\n  {CYAN}{BOLD}🔌 Recommended MCP Servers Catalog:{RESET}")
     default_nums = []
     for idx, srv in enumerate(catalog, start=1):
-        star = f"{GREEN}[Recommandé]{RESET}" if srv.get("default_selected") else f"{YELLOW}[Optionnel]{RESET}"
+        star = f"{GREEN}[Recommended]{RESET}" if srv.get("default_selected") else f"{YELLOW}[Optional]{RESET}"
         if srv.get("default_selected"):
             default_nums.append(str(idx))
         print(f"    {BOLD}{idx}{RESET}) {BOLD}{srv['title']}{RESET} {star}")
         print(f"       └ {srv['description']}")
 
     default_str = ",".join(default_nums)
-    print(f"\n  💡 Entrez les numéros à installer séparés par des virgules (ex: {BOLD}1,2,3{RESET}),")
-    print(f"     appuyez sur {BOLD}[Entrée]{RESET} pour installer la sélection recommandée ({BOLD}{default_str}{RESET}), ou tapez {BOLD}n{RESET} pour passer.")
-    raw_sel = input(f"  Votre choix [{default_str} / all / n] : ").strip().lower()
+    print(f"\n  💡 Enter server numbers separated by commas (e.g. {BOLD}1,2,3{RESET}),")
+    print(f"     press {BOLD}[Enter]{RESET} to install the recommended set ({BOLD}{default_str}{RESET}), or type {BOLD}n{RESET} to skip.")
+    raw_sel = input(f"  Your choice [{default_str} / all / n]: ").strip().lower()
 
-    if raw_sel in ("n", "non", "no", "s", "skip", "0"):
-        print(f"  {YELLOW}ℹ Installation MCP ignorée (vous pourrez les installer en 1 clic sur Telegram via /mcp).{RESET}")
+    if raw_sel in ("n", "no", "non", "s", "skip", "0"):
+        print(f"  {YELLOW}ℹ MCP server setup skipped (you can manage and add them anytime via /mcp in Telegram).{RESET}")
         return []
 
     selected_indices: List[int] = []
-    if raw_sel in ("", "o", "oui", "y", "yes"):
+    if raw_sel in ("", "y", "yes", "o", "oui"):
         selected_indices = [int(x) for x in default_nums]
-    elif raw_sel in ("a", "all", "tous", "tout"):
+    elif raw_sel in ("a", "all"):
         selected_indices = list(range(1, len(catalog) + 1))
     else:
         for part in raw_sel.replace(" ", ",").split(","):
@@ -402,8 +402,8 @@ def configure_mcp_and_skills(agy_bin: str) -> List[str]:
         if env_key:
             env_val = os.getenv(env_key, "").strip()
             if not env_val:
-                prompt_txt = srv.get("env_prompt") or f"Clé {env_key} (Entrée pour passer)"
-                env_val = input(f"  🔑 [{srv_id}] {prompt_txt} : ").strip()
+                prompt_txt = srv.get("env_prompt") or f"{env_key} key (Press Enter to skip)"
+                env_val = input(f"  🔑 [{srv_id}] {prompt_txt}: ").strip()
                 if env_val:
                     config.update_env_var(env_key, env_val)
 
@@ -413,23 +413,22 @@ def configure_mcp_and_skills(agy_bin: str) -> List[str]:
         cmd.extend([srv_id, "--", npx_cmd] + list(srv["args"]))
 
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
             if res.returncode == 0:
-                print(f"  {GREEN}✔ Serveur MCP '{srv_id}' configuré avec succès !{RESET}")
+                print(f"  {GREEN}✔ MCP server '{srv_id}' configured successfully!{RESET}")
                 installed_mcp.append(srv_id)
             else:
                 err_txt = (res.stderr or res.stdout or "").strip()
-                print(f"  {YELLOW}⚠ Avertissement MCP '{srv_id}' : {err_txt}{RESET}")
+                print(f"  {YELLOW}⚠ MCP notice for '{srv_id}': {err_txt}{RESET}")
         except Exception as e:
-            print(f"  {YELLOW}⚠ Impossible d'ajouter le serveur MCP '{srv_id}' : {e}{RESET}")
+            print(f"  {YELLOW}⚠ Could not add MCP server '{srv_id}': {e}{RESET}")
 
     return installed_mcp
 
 
 def save_configuration(agy_bin: str, token: str, admin_id: int | None, admin_name: str, models: list, installed_mcp: List[str] | None = None):
-    """Write .env, settings.json, and users.json safely."""
+    """Write .env, settings.json, and users.json safely with clean English defaults."""
     from config import DEFAULT_SETTINGS
-    # Preserve any API keys (e.g. FIRECRAWL_API_KEY) already written to .env
     extra_env: dict[str, str] = {}
     if ENV_FILE.exists():
         for line in ENV_FILE.read_text(encoding="utf-8", errors="ignore").splitlines():
@@ -440,7 +439,7 @@ def save_configuration(agy_bin: str, token: str, admin_id: int | None, admin_nam
                     extra_env[k] = v.strip()
 
     env_lines = [
-        "# Antigravity Telegram Agent v4.0 Configuration",
+        "# Antigravity Telegram Agent v4.2 Configuration",
         f"TELEGRAM_BOT_TOKEN={token}",
         f"ALLOWED_USER_ID={admin_id if admin_id else ''}",
         f"AGY_BIN_PATH={agy_bin or ''}",
@@ -456,14 +455,12 @@ def save_configuration(agy_bin: str, token: str, admin_id: int | None, admin_nam
         except Exception:
             pass
 
-    default_model = "gemini-4-argon-medium"
-    if models:
-        model_ids = [m[0] for m in models]
-        if default_model not in model_ids:
-            default_model = model_ids[0]
+    # Universal default: "auto" works on Free, Pro, and Ultra Google accounts!
+    default_model = "auto"
 
     settings = DEFAULT_SETTINGS.copy()
     settings["model"] = default_model
+    settings["account_tier"] = "auto"
     settings["workspace_dir"] = str(BASE_DIR)
 
     if SETTINGS_FILE.exists():
@@ -500,15 +497,15 @@ def save_configuration(agy_bin: str, token: str, admin_id: int | None, admin_nam
     USERS_FILE.write_text(json.dumps(users_data, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print(f"\n{GREEN}{BOLD}=================================================================={RESET}")
-    print(f"{GREEN}{BOLD}   ✅ CONFIGURATION TERMINÉE AVEC SUCCÈS !                        {RESET}")
+    print(f"{GREEN}{BOLD}   ✅ SETUP COMPLETED SUCCESSFULLY!                              {RESET}")
     print(f"{GREEN}{BOLD}=================================================================={RESET}")
-    print(f"  • Fichier {BOLD}.env{RESET} généré")
-    print(f"  • Fichier {BOLD}settings.json{RESET} initialisé (Modèle: {settings.get('model')})")
-    print(f"  • Fichier {BOLD}users.json{RESET} prêt")
-    print(f"  • Skill IA {BOLD}telegram-bot-mastery{RESET} activé")
+    print(f"  • Environment {BOLD}.env{RESET} file generated")
+    print(f"  • Settings {BOLD}settings.json{RESET} initialized (Model: {settings.get('model')}, Tier: {settings.get('account_tier')})")
+    print(f"  • User access file {BOLD}users.json{RESET} ready")
+    print(f"  • AI Skill {BOLD}telegram-bot-mastery{RESET} active")
     if installed_mcp:
-        print(f"  • Serveurs MCP configurés : {BOLD}{', '.join(installed_mcp)}{RESET}")
-    print(f"\n  🚀 Vous pouvez gérer {BOLD}tous les paramètres et serveurs MCP{RESET} depuis Telegram avec {CYAN}/settings{RESET} et {CYAN}/mcp{RESET} !\n")
+        print(f"  • Configured MCP servers: {BOLD}{', '.join(installed_mcp)}{RESET}")
+    print(f"\n  🚀 You can configure {BOLD}all settings, models, and MCP servers{RESET} directly in Telegram with {CYAN}/settings{RESET}, {CYAN}/usage{RESET}, and {CYAN}/mcp{RESET}!\n")
 
 
 def run_wizard():
@@ -524,5 +521,5 @@ if __name__ == "__main__":
     try:
         run_wizard()
     except KeyboardInterrupt:
-        print(f"\n{YELLOW}Configuration interrompue par l'utilisateur.{RESET}")
+        print(f"\n{YELLOW}Setup interrupted by user.{RESET}")
         sys.exit(1)

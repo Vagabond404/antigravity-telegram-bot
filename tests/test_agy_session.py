@@ -21,19 +21,19 @@ def test_is_quota_error():
 
 def test_format_tool_action():
     desc1 = AgySession._format_tool_action("run_command", {"CommandLine": "python test.py"})
-    assert "Commande" in desc1
+    assert "Command" in desc1 or "Commande" in desc1
     assert "python test.py" in desc1
 
     desc2 = AgySession._format_tool_action("view_file", {"AbsolutePath": "/var/log/syslog"})
-    assert "Lecture" in desc2
+    assert "Reading" in desc2 or "Lecture" in desc2
     assert "syslog" in desc2
 
     desc3 = AgySession._format_tool_action("search_web", {"query": "ESP32 pinout"})
-    assert "Recherche Web" in desc3
+    assert "Search" in desc3 or "Recherche" in desc3
     assert "ESP32 pinout" in desc3
 
     desc4 = AgySession._format_tool_action("invoke_subagent", {"Subagents": [{"Role": "Recherche"}]})
-    assert "Sous-Agent" in desc4
+    assert "Subagent" in desc4 or "Sous-Agent" in desc4
     assert "Recherche" in desc4
 
 
