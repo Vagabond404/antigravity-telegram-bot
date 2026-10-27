@@ -50,13 +50,13 @@ PROTECTED_SYSTEM_COMMANDS: Dict[str, str] = {
 
 DEFAULT_CUSTOM_COMMANDS: Dict[str, Dict[str, Any]] = {
     "goal": {
-        "description": "Exécuter une tâche autonome approfondie jusqu'à complétion totale",
+        "description": "Execute deep autonomous long-running task until completion",
         "template": (
-            "[OBJECTIF AUTONOME / LONG-RUNNING GOAL]\n"
-            "Tu es en mode autonome approfondi (/goal). Accomplis cette tâche de manière exhaustive, "
-            "méthodique, vérifie chaque étape, teste ton travail et ne t'arrête que lorsque l'objectif "
-            "est 100% atteint.\n\n"
-            "Demande / Objectif :\n{prompt}"
+            "[AUTONOMOUS GOAL / LONG-RUNNING TASK]\n"
+            "You are in deep autonomous mode (/goal). Accomplish this task exhaustively, "
+            "methodically, verify every step, test your work and do not stop until the objective "
+            "is 100% achieved.\n\n"
+            "Task / Goal:\n{prompt}"
         ),
         "overrides": {
             "mode": "auto-approve",
@@ -67,13 +67,13 @@ DEFAULT_CUSTOM_COMMANDS: Dict[str, Dict[str, Any]] = {
         "created_by": "system",
     },
     "grill_me": {
-        "description": "Concevoir et cadrer un projet via un entretien interactif pas-à-pas",
+        "description": "Clarify and architect a project via interactive interview",
         "template": (
-            "[MODE ENTRETIEN & CONCEPTION / GRILL-ME]\n"
-            "L'utilisateur souhaite concevoir ou cadrer un projet. "
-            "Pose des questions ciblées, explore l'arborescence des choix techniques, "
-            "propose tes recommandations argumentées et valide l'architecture avec l'utilisateur.\n\n"
-            "Sujet du projet :\n{prompt}"
+            "[INTERVIEW & DESIGN MODE / GRILL-ME]\n"
+            "The user wants to design and architect a project. "
+            "Ask targeted questions one by one, explore technical tradeoffs, "
+            "provide reasoned recommendations and validate decisions before code implementation.\n\n"
+            "Project Scope:\n{prompt}"
         ),
         "overrides": {
             "mode": "accept-edits",
@@ -82,12 +82,12 @@ DEFAULT_CUSTOM_COMMANDS: Dict[str, Dict[str, Any]] = {
         "created_by": "system",
     },
     "plan": {
-        "description": "Générer un plan d'architecture et d'implémentation détaillé étape par étape",
+        "description": "Generate detailed step-by-step architectural and implementation plan",
         "template": (
-            "[MODE PLANIFICATION ARCHITECTURALE / PLAN]\n"
-            "Analyse la demande ci-dessous et élabore un plan d'action structuré, complet et vérifiable "
-            "avant toute modification majeure.\n\n"
-            "Sujet :\n{prompt}"
+            "[ARCHITECTURAL PLANNING MODE / PLAN]\n"
+            "Analyze the request below and produce a structured, comprehensive and verifiable action plan "
+            "before any major modification.\n\n"
+            "Subject:\n{prompt}"
         ),
         "overrides": {
             "mode": "plan",
@@ -96,12 +96,12 @@ DEFAULT_CUSTOM_COMMANDS: Dict[str, Dict[str, Any]] = {
         "created_by": "system",
     },
     "boost": {
-        "description": "Activer la réflexion maximale (max effort) et la vérification multi-perspectives",
+        "description": "Activate maximum reasoning effort and multi-perspective verification",
         "template": (
-            "[MODE BOOST / RÉFLEXION MAXIMALE & VÉRIFICATION RIGOUREUSE]\n"
-            "Mobilise une réflexion approfondie, examine le problème sous plusieurs angles, "
-            "utilise des sous-agents de recherche si pertinent et vérifie rigoureusement chaque résultat.\n\n"
-            "Problème / Mission :\n{prompt}"
+            "[BOOST MODE / MAXIMUM REASONING & RIGOROUS VERIFICATION]\n"
+            "Engage deep thinking, examine the problem from multiple perspectives, "
+            "leverage research subagents if helpful, and rigorously verify every result.\n\n"
+            "Problem / Mission:\n{prompt}"
         ),
         "overrides": {
             "mode": "auto-approve",
@@ -112,13 +112,13 @@ DEFAULT_CUSTOM_COMMANDS: Dict[str, Dict[str, Any]] = {
         "created_by": "system",
     },
     "teamwork": {
-        "description": "Orchestrer une équipe de sous-agents autonomes en parallèle sur un projet",
+        "description": "Orchestrate a team of autonomous subagents in parallel",
         "template": (
-            "[MODE MULTI-AGENTS / TEAMWORK ORCHESTRATION]\n"
-            "Pour accomplir cette mission complexe, décompose le travail et utilise tes outils de sous-agents "
-            "(`invoke_subagent`, `define_subagent`, `manage_subagents`, `send_message`) afin de déléguer "
-            "la recherche, l'implémentation et la vérification en parallèle, puis synthétise le résultat final.\n\n"
-            "Mission d'équipe :\n{prompt}"
+            "[MULTI-AGENT MODE / TEAMWORK ORCHESTRATION]\n"
+            "To accomplish this complex mission, break down the work and use your subagent tools "
+            "(`invoke_subagent`, `define_subagent`, `manage_subagents`, `send_message`) to delegate "
+            "research, implementation, and verification in parallel, then synthesize the final result.\n\n"
+            "Team Mission:\n{prompt}"
         ),
         "overrides": {
             "mode": "auto-approve",
