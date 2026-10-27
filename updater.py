@@ -498,8 +498,10 @@ async def perform_safe_update(
 def _run_restart_worker(old_pid: int) -> None:
     """
     Detached worker process:
-    1. If running on Linux with an active `antigravity-bot.service` systemd unit, runs `systemctl restart antigravity-bot`.
-    2. Otherwise waits for `old_pid` to exit cleanly and starts a fresh `bot.py` process.
+    1. If running on Linux with an active `antigravity-bot.service` systemd unit,
+       attempts `systemctl restart antigravity-bot.service`.
+    2. If systemd is absent or fails (e.g. non-root without sudo), falls through
+       to wait for `old_pid` to release locks, then spawns `bot.py` directly.
     """
     time.sleep(1.2)
 
@@ -515,10 +517,20 @@ def _run_restart_worker(old_pid: int) -> None:
                 res = subprocess.run(["systemctl", "restart", "antigravity-bot.service"], timeout=15)
                 if res.returncode == 0:
                     return
-                subprocess.run(["sudo", "systemctl", "restart", "antigravity-bot.service"], timeout=15)
-                return
-        except Exception:
-            pass
+                # Try non-interactive sudo if regular user
+                res_sudo = subprocess.run(
+                    ["sudo", "-n", "systemctl", "restart", "antigravity-bot.service"],
+                    capture_output=True,
+                    timeout=15,
+                )
+                if res_sudo.returncode == 0:
+                    return
+                logger.warning(
+                    f"systemctl restart failed ({res.returncode}) and sudo failed ({res_sudo.returncode}). "
+                    "Falling back to direct process spawning."
+                )
+        except Exception as e:
+            logger.debug(f"systemd restart check failed: {e}")
 
     # Wait up to 8 seconds for old PID to exit
     for _ in range(16):
@@ -528,10 +540,19 @@ def _run_restart_worker(old_pid: int) -> None:
         except OSError:
             break
 
-    # Spawn the updated bot.py
+    # Spawn the updated bot.py with safe logging
+    log_fp = None
+    try:
+        TEMP_DIR.mkdir(parents=True, exist_ok=True)
+        log_fp = open(TEMP_DIR / "bot_restart.log", "a", encoding="utf-8")
+    except Exception:
+        log_fp = subprocess.DEVNULL
+
     kwargs: Dict[str, Any] = {
         "cwd": str(BASE_DIR),
         "stdin": subprocess.DEVNULL,
+        "stdout": log_fp,
+        "stderr": log_fp,
     }
     if IS_WINDOWS:
         CREATE_NEW_PROCESS_GROUP = 0x00000200
