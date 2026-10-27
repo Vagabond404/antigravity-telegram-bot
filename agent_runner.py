@@ -380,6 +380,42 @@ async def remote_control_toggle(start: bool) -> Tuple[bool, str]:
     return (rc == 0), (out or err or f"Remote control {sub} completed.")
 
 
+async def run_plugin_action(action: str, target: str) -> Tuple[bool, str]:
+    """Execute a plugin management action (enable, disable, install, uninstall, import)."""
+    action = action.lower().strip()
+    if action == "enable":
+        return await toggle_cli_plugin(target, True)
+    elif action == "disable":
+        return await toggle_cli_plugin(target, False)
+    elif action in ("install", "import", "add"):
+        return await install_cli_plugin(target)
+    elif action in ("uninstall", "remove", "rm", "delete"):
+        return await uninstall_cli_plugin(target)
+    else:
+        rc, out, err = await run_agy_subcommand(["plugin", action, target], timeout=25.0)
+        return (rc == 0), (out or err or f"Plugin action '{action}' executed.")
+
+
+async def manage_remote_control(action: str) -> Tuple[bool, str]:
+    """Inspect or manage Antigravity CLI remote control daemon."""
+    action = action.lower().strip()
+    if action == "status":
+        return await remote_control_status()
+    elif action == "start":
+        return await remote_control_toggle(True)
+    elif action == "stop":
+        return await remote_control_toggle(False)
+    else:
+        rc, out, err = await run_agy_subcommand(["remote-control", action], timeout=15.0)
+        return (rc == 0), (out or err or f"Remote control {action} executed.")
+
+
+async def update_cli_binary() -> Tuple[bool, str]:
+    """Run `agy update` to update the Antigravity CLI binary to the latest version."""
+    rc, out, err = await run_agy_subcommand(["update"], timeout=120.0)
+    return (rc == 0), (out or err or "Antigravity CLI update completed.")
+
+
 class AgentRunner:
     """
     High-level facade over AgySession providing:
