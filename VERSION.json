@@ -1,7 +1,7 @@
 {
-  "bot_version": "5.0.0",
-  "min_agy_version": "1.3.0",
+  "bot_version": "5.1.0",
+  "min_agy_version": "1.4.12",
   "repository": "https://github.com/Vagabond404/antigravity-telegram-bot.git",
   "branch": "main",
-  "changelog": "Antigravity Telegram Agent v5.0.0: Persistent stream-json warm session (zero cold start), full autonomous multi-agent orchestration team (/agents), interactive agent creation with button confirmation, /usage quota & rolling cycle dashboard with live test & reset, compartmentalized desktop workspace isolation, zero-data-loss safe self-updater, and production open-source readiness."
+  "changelog": "Antigravity Telegram Agent v5.1.0: Native scheduled tasks and automations engine (tasks.py / /tasks / /schedule), 100% real-time official Google Antigravity quotas (/usage) synced from CLI, hardened multi-layer message delivery with automatic RetryAfter & network backoff, deep person profile system with speech tone rules (tutoiement/vouvoiement), and social graph connection tracking (mem.py person / relate)."
 }

@@ -39,19 +39,47 @@ python tg_send.py --document "/absolute/path/to/archive.zip" --caption "Project 
 
 ---
 
-## 2. 🧠 Proactive Cross-Chat Long-Term Memory (`mem.py` / `memory.db`)
+## 2. 🧠 Proactive Long-Term Memory, Person Profiles & Social Graph (`mem.py` / `memory.db`)
 
-You have a **Hybrid Long-Term Memory Engine (FastEmbed Vector Search + SQLite)** that persists across all conversations, even after `/clear` or a server reboot.
+You have a **Deep Hybrid Long-Term Memory Engine (FastEmbed Vector Search + SQLite + Social Graph)** that persists across all conversations, reboots, and `/clear`.
 
-### Official Memory Categories
+### A. Person Profiles & Speech Tone Engine (`mem.py person`)
+Store people's roles, relationship with the user, and **explicit rules on how you should talk to them** (tutoiement vs vouvoiement, tone, formal vs casual):
+
+```bash
+# Register or update a person profile with tone instructions
+python mem.py person add "Ange" --role "Créateur & Admin Principal" --relation "Propriétaire" --tone "Tutoiement direct, concis, amical et technique" --aliases "ange,admin"
+
+python mem.py person add "Sophie" --role "Partenaire Commerciale" --relation "Cliente" --tone "Vouvoiement très courtois, poli et professionnel"
+
+# Add specific facts to a person's profile
+python mem.py person fact "Ange" "Préfère les réponses directes sans politesses superflues."
+
+# Consult a person's profile
+python mem.py person get "Ange"
+
+# List all known people
+python mem.py person list
+```
+
+### B. Social Graph & Interpersonal Connections (`mem.py relate`)
+Track relationships and connections between different people:
+
+```bash
+# Register a relationship
+python mem.py relate "Ange" "associé" "Marc" --details "Co-fondateurs du projet X"
+python mem.py relate "Marc" "collègue" "Sophie"
+
+# List relationships
+python mem.py relate list
+```
+
+### C. General Memory Categories & Facts (`mem.py add`)
 - `profile`: User identity (name, role, location, devices, skills).
 - `preferences`: Coding style, preferred languages/frameworks, communication preferences.
 - `projet`: Project details (name, directory path, tech stack, architecture, current status, next steps).
 - `infra`: Servers, IP addresses, OS (Armbian, Windows, Linux VPS), Docker containers, ports, services.
 - `rules`: Permanent rules and constraints specified by the user.
-
-### Proactive Memory Commands (`mem.py`)
-Proactively store any important fact using a unique key (`--key`) so existing entries are cleanly updated (upserted) without creating duplicates:
 
 ```bash
 # Store or update personal info / preferences / rules / infrastructure
@@ -70,6 +98,39 @@ python mem.py list --category projet
 # Delete an obsolete memory by ID
 python mem.py delete 12
 ```
+
+---
+
+## 3. ⏰ Native Scheduled Tasks & Autonomous Automations (`tasks.py` / `scheduled_tasks.db`)
+
+You can **natively schedule one-shot timers and recurring automations** at any time. A persistent background worker runs inside the bot, executes the action when due, and reports the results directly to Telegram:
+
+```bash
+# Schedule an AI prompt execution in 30 minutes
+python tasks.py add "Scanne les logs système et préviens Ange si anomalie" --when "in 30m" --name "scan_logs"
+
+# Schedule a recurring prompt every 2 hours
+python tasks.py add "Vérifie l'état des conteneurs Docker et envoie un statut" --when "every 2h" --name "docker_health"
+
+# Schedule a daily morning briefing at 09:00
+python tasks.py add "Fais un résumé des actualités IA et des tâches du jour" --when "09:00" --name "morning_brief"
+
+# Schedule a pure reminder message
+python tasks.py add "Prendre les médicaments" --when "20:00" --type reminder --name "med_reminder"
+
+# Schedule a direct shell command execution
+python tasks.py add "git pull && systemctl restart my-service" --when "in 1h" --type command --name "deploy_update"
+
+# List all scheduled tasks
+python tasks.py list
+
+# Manage tasks (pause, resume, remove)
+python tasks.py pause 3
+python tasks.py resume 3
+python tasks.py remove 3
+```
+
+The user can also view and control tasks in Telegram with `/tasks` or quickly schedule via `/schedule in 15m | Rappelle-moi...`.
 
 ---
 

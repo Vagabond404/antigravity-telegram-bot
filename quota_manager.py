@@ -11,6 +11,7 @@ import os
 import re
 import json
 import time
+import html
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -149,6 +150,45 @@ class QuotaManager:
     def __init__(self, filepath: Path = QUOTA_FILE):
         self.filepath = filepath
         self.data: Dict[str, Any] = self._load()
+        self._live_quota_cache: Dict[str, Any] = {}
+        self._live_quota_cache_time: float = 0.0
+
+    def get_live_quotas_sync(self, force_refresh: bool = False) -> Dict[str, Any]:
+        """
+        Query real-time official Google Antigravity quotas via 'agy -p /usage --output-format json'.
+        Returns live quota buckets (groups, fractions, reset countdowns) directly from Google servers.
+        """
+        now = time.time()
+        if not force_refresh and self._live_quota_cache and (now - self._live_quota_cache_time) < 50.0:
+            return self._live_quota_cache
+
+        from config import find_agy_binary, WORKSPACE_DIR
+        bin_path = find_agy_binary()
+        if not bin_path:
+            return self._live_quota_cache or {}
+
+        import subprocess
+        try:
+            res = subprocess.run(
+                [bin_path, "-p", "/usage", "--output-format", "json"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=str(WORKSPACE_DIR),
+                timeout=15,
+            )
+            if res.returncode == 0 and res.stdout:
+                parsed = json.loads(res.stdout)
+                cmd_data = parsed.get("command", {}).get("data", {})
+                groups = cmd_data.get("groups", [])
+                if groups:
+                    self._live_quota_cache = {"groups": groups, "timestamp": now}
+                    self._live_quota_cache_time = now
+                    return self._live_quota_cache
+        except Exception as e:
+            logger.debug(f"Live agy quota query error: {e}")
+
+        return self._live_quota_cache or {}
 
     def _load(self) -> Dict[str, Any]:
         if self.filepath.exists():
@@ -474,96 +514,126 @@ class QuotaManager:
         self,
         user_lang: str = "en",
         account_tier: str = ACCOUNT_TIER_AUTO,
+        force_refresh: bool = False,
     ) -> str:
         """
-        Generate a complete, beautiful HTML dashboard of model quotas and token usage gauges
-        for the 3 distinct Antigravity token buckets: Gemini, Argon, and Claude.
+        Generate a complete, beautiful HTML dashboard of model quotas and token usage gauges.
+        Extracts 100% live official Google Antigravity quotas directly from the CLI ('agy -p /usage').
         """
         self._check_rollover()
-        families = self.data.get("families", {})
-        models = self.data.get("models", {})
-
-        tier_key = account_tier if account_tier in TIER_FAMILY_BUDGETS else ACCOUNT_TIER_PRO
-        budgets = TIER_FAMILY_BUDGETS[tier_key]
-
         is_fr = (user_lang == "fr")
 
         # Titles and Section Labels
         if is_fr:
-            title = "📊 <b>Tableau de Bord — Quotas &amp; Utilisation des Tokens IA</b>\n"
+            title = "📊 <b>Tableau de Bord — Quotas &amp; Utilisation Officiels Antigravity</b>\n"
             plan_label = f"🏷️ <b>Forfait Google :</b> <code>{account_tier.upper()}</code>"
             date_line = f"📅 <b>Date :</b> <code>{self._today_str()} (UTC)</code>\n"
-            gauges_header = "<b>Jauges d'Utilisation des Tokens Antigravity :</b>\n"
-            avail_text = "🟢 <b>Disponible ✅</b>"
-            exhausted_text = "⛔ <b>Cooldown / Épuisé</b>"
-            pro_required_text = "🔒 <b>Réservé au Forfait Pro / Ultra</b>"
-            sec_models = "\n<b>Détails par Modèle :</b>"
+            gauges_header = "<b>Quotas Réels des Modèles IA (Google Antigravity) :</b>\n"
+            sec_models = "\n<b>Activité de la Session &amp; Modèles :</b>"
             tip_text = (
                 "💡 <i>Astuce : En choisissant <code>/model ➔ 🤖 Auto</code>, l'agent utilise "
                 "automatiquement Flash pour les messages standards afin de préserver votre quota "
                 "d'Argon et Claude pour les gros devoirs et codes complexes !</i>\n\n"
-                "🔄 <i>Si vos tokens ont été rechargés par Google, cliquez sur 'Réinitialiser les Verrous' ci-dessous.</i>"
+                "🔄 <i>Pour synchroniser l'état en direct avec Google, cliquez sur 'Rafraîchir' ci-dessous.</i>"
             )
         else:
-            title = "📊 <b>AI Models &amp; Token Usage Dashboard</b>\n"
+            title = "📊 <b>AI Models &amp; Real Google Antigravity Quota Dashboard</b>\n"
             plan_label = f"🏷️ <b>Google Plan:</b> <code>{account_tier.upper()}</code>"
             date_line = f"📅 <b>Date:</b> <code>{self._today_str()} (UTC)</code>\n"
-            gauges_header = "<b>Antigravity Token Usage Gauges:</b>\n"
-            avail_text = "🟢 <b>Available ✅</b>"
-            exhausted_text = "⛔ <b>Cooldown / Exhausted</b>"
-            pro_required_text = "🔒 <b>Pro / Ultra Plan Required</b>"
-            sec_models = "\n<b>Per-Model Breakdown:</b>"
+            gauges_header = "<b>Real-Time Antigravity Model Quotas (Live from Google):</b>\n"
+            sec_models = "\n<b>Session Activity &amp; Models:</b>"
             tip_text = (
                 "💡 <i>Tip: With <code>/model ➔ 🤖 Auto</code>, the agent automatically routes "
                 "everyday questions to fast Flash to preserve Argon & Claude quotas for heavy coding and reasoning!</i>\n\n"
-                "🔄 <i>If your Google tokens were replenished, click 'Reset Cooldown Locks' below.</i>"
+                "🔄 <i>To sync live status with Google servers, click 'Refresh' below.</i>"
             )
 
         lines = [title, plan_label, date_line, gauges_header]
 
-        family_configs = [
-            ("gemini", "⚡ Gemini (Flash)", "gemini-3.8-flash-medium"),
-            ("argon", "🧠 Argon (Gemini 4 Argon)", "gemini-4-argon-medium"),
-            ("claude", "📜 Claude (Sonnet / Opus)", "claude-sonnet-5-5-medium"),
-        ]
+        # 1. Attempt to fetch real-time official quotas from 'agy -p /usage'
+        live_data = self.get_live_quotas_sync(force_refresh=force_refresh)
+        live_groups = live_data.get("groups", [])
 
-        now = time.time()
+        if live_groups:
+            group_icons = {
+                "gemini models": "⚡",
+                "claude and gpt models": "📜",
+                "gemini 4 argon": "🧠",
+            }
+            for grp in live_groups:
+                g_name = grp.get("name", "Bucket")
+                g_icon = group_icons.get(g_name.lower(), "🔹")
+                lines.append(f"{g_icon} <b>{html.escape(g_name)} :</b>")
 
-        for fam_key, fam_title, rep_model in family_configs:
-            frec = families.get(fam_key, {})
-            used_tok = frec.get("tokens_cycle", 0)
-            budget = budgets.get(fam_key, 0)
-            c_h, c_m = self.get_family_cycle_remaining(fam_key)
+                for b in grp.get("buckets", []):
+                    b_name = b.get("name", "Quota")
+                    rem_frac = float(b.get("remaining_fraction", 1.0))
+                    pct = max(0, min(100, int(rem_frac * 100)))
+                    gauge = render_gauge(pct, 100)
+                    reset_time = b.get("reset_time", "")
 
-            # Check if rate limited
-            ex_until = frec.get("exhausted_until", 0)
-            is_limited = ex_until > now
+                    countdown_str = ""
+                    if reset_time:
+                        try:
+                            # Parse ISO timestamp like 2026-11-03T07:42:05Z
+                            t_clean = reset_time.replace("Z", "+00:00")
+                            r_dt = datetime.fromisoformat(t_clean)
+                            diff = (r_dt - datetime.now(timezone.utc)).total_seconds()
+                            if diff > 0:
+                                d_days = int(diff // 86400)
+                                d_hours = int((diff % 86400) // 3600)
+                                d_mins = int((diff % 3600) // 60)
+                                if d_days > 0:
+                                    cd = f"{d_days}j {d_hours}h" if is_fr else f"{d_days}d {d_hours}h"
+                                elif d_hours > 0:
+                                    cd = f"{d_hours}h {d_mins:02d}m"
+                                else:
+                                    cd = f"{d_mins}m"
+                                countdown_str = f" ➔ Recharge dans {cd}" if is_fr else f" ➔ Resets in {cd}"
+                        except Exception:
+                            countdown_str = f" ➔ {reset_time}"
 
-            gauge_bar = render_gauge(used_tok, budget if budget > 0 else 1)
+                    status_dot = "🟢" if pct >= 30 else ("🟡" if pct > 10 else "🔴")
+                    lines.append(f"  • {status_dot} <b>{html.escape(b_name)} :</b> {gauge}{countdown_str}")
+                lines.append("")
+        else:
+            # Fallback to local quota calculation if CLI is offline
+            family_configs = [
+                ("gemini", "⚡ Gemini (Flash)", "gemini-3.8-flash-medium"),
+                ("argon", "🧠 Argon (Gemini 4 Argon)", "gemini-4-argon-medium"),
+                ("claude", "📜 Claude (Sonnet / Opus)", "claude-sonnet-5-5-medium"),
+            ]
+            families = self.data.get("families", {})
+            tier_key = account_tier if account_tier in TIER_FAMILY_BUDGETS else ACCOUNT_TIER_PRO
+            budgets = TIER_FAMILY_BUDGETS[tier_key]
+            now = time.time()
 
-            if account_tier == ACCOUNT_TIER_FREE and budget == 0:
-                status_str = pro_required_text
-                gauge_str = "[░░░░░░░░░░] N/A"
-            elif is_limited:
-                rem_sec = int(ex_until - now)
-                m_left = max(1, (rem_sec + 59) // 60)
-                h_left = m_left // 60
-                m_sub = m_left % 60
-                time_str = f"{h_left}h {m_sub:02d}m" if h_left > 0 else f"{m_left}m"
-                reset_utc = datetime.fromtimestamp(ex_until, timezone.utc).strftime("%H:%M UTC")
-                status_str = f"{exhausted_text} (Recharge dans ~{time_str} à {reset_utc})" if is_fr else f"{exhausted_text} (Resets in ~{time_str} at {reset_utc})"
-                gauge_str = f"{gauge_bar} (<code>{used_tok:,}</code> tok)"
-            else:
-                status_str = f"{avail_text} (Cycle 5h : ~{c_h}h {c_m:02d}m)" if is_fr else f"{avail_text} (5h Cycle: ~{c_h}h {c_m:02d}m)"
-                budget_str = f"{budget:,}" if budget > 0 else "∞"
-                gauge_str = f"{gauge_bar} (<code>{used_tok:,} / {budget_str}</code> tok)"
+            for fam_key, fam_title, rep_model in family_configs:
+                frec = families.get(fam_key, {})
+                used_tok = frec.get("tokens_cycle", 0)
+                budget = budgets.get(fam_key, 0)
+                c_h, c_m = self.get_family_cycle_remaining(fam_key)
+                ex_until = frec.get("exhausted_until", 0)
+                is_limited = ex_until > now
+                gauge_bar = render_gauge(used_tok, budget if budget > 0 else 1)
 
-            lines.append(f"• <b>{fam_title}</b>")
-            lines.append(f"  └ {gauge_str}")
-            lines.append(f"  └ État : {status_str}" if is_fr else f"  └ Status: {status_str}\n")
+                if is_limited:
+                    rem_sec = int(ex_until - now)
+                    m_left = max(1, (rem_sec + 59) // 60)
+                    h_left = m_left // 60
+                    m_sub = m_left % 60
+                    time_str = f"{h_left}h {m_sub:02d}m" if h_left > 0 else f"{m_left}m"
+                    status_str = f"⛔ Cooldown (Recharge dans ~{time_str})" if is_fr else f"⛔ Cooldown (Resets in ~{time_str})"
+                else:
+                    status_str = f"🟢 Disponible (Cycle 5h : ~{c_h}h {c_m:02d}m)" if is_fr else f"🟢 Available (5h Cycle: ~{c_h}h {c_m:02d}m)"
+
+                lines.append(f"• <b>{fam_title}</b>")
+                lines.append(f"  └ {gauge_bar} (<code>{used_tok:,} tok</code>)")
+                lines.append(f"  └ État : {status_str}\n" if is_fr else f"  └ Status: {status_str}\n")
 
         lines.append(sec_models)
 
+        # 2. Per-model breakdown
         known_display_order = [
             ("gemini-3.8-flash-medium", "Gemini 3.8 Flash (Medium)"),
             ("gemini-4-argon-medium", "Gemini 4 Argon (Medium)"),
@@ -571,9 +641,16 @@ class QuotaManager:
             ("claude-opus-5-5-medium", "Claude Opus 5.5 (Medium)"),
         ]
 
-        seen_models = set()
-        for mod_id, mod_label in known_display_order:
-            seen_models.add(mod_id)
+        models = self.data.get("models", {})
+        displayed_models = list(known_display_order)
+        seen_ids = {m[0] for m in known_display_order}
+
+        for m_id in models.keys():
+            if m_id not in seen_ids and m_id != "auto":
+                displayed_models.append((m_id, m_id))
+                seen_ids.add(m_id)
+
+        for mod_id, mod_label in displayed_models:
             rec = models.get(mod_id, {})
             req_today = rec.get("requests_today", 0)
             tok_today = rec.get("tokens_today", 0)
@@ -584,10 +661,10 @@ class QuotaManager:
                 mins = max(1, (remaining + 59) // 60)
                 st = f"⛔ Cooldown (~{mins}m)"
             else:
-                st = "🟢 OK"
+                st = "🟢 Prêt" if is_fr else "🟢 Ready"
 
             lines.append(
-                f"• <b>{mod_label}</b>: {st} | <code>{req_today}</code> req | <code>{tok_str}</code> tok"
+                f"• <b>{html.escape(mod_label)}</b> : {st} | <code>{req_today}</code> req | <code>{tok_str}</code> tok"
             )
 
         lines.append("")

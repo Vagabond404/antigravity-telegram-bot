@@ -125,11 +125,11 @@ def sanitize_telegram_html(text: str) -> str:
     return "".join(result)
 
 
-def truncate_telegram_html(text: str, max_length: int = 4000) -> str:
-    if len(text) <= max_length:
-        return text
+def truncate_telegram_html(text: str, max_length: int = 3800) -> str:
+    if not text or len(text) <= max_length:
+        return text or ""
 
-    cut = text[:max_length]
+    cut = text[:max(0, max_length - 15)]
     last_open = cut.rfind("<")
     last_close = cut.rfind(">")
     if last_open > last_close:
@@ -404,7 +404,7 @@ def format_tool_call_html(
     return f"<blockquote expandable>{body}</blockquote>"
 
 
-def smart_split_html(text: str, max_length: int = 4000) -> List[str]:
+def smart_split_html(text: str, max_length: int = 3800) -> List[str]:
     if not text:
         return ["<i>(Réponse vide)</i>"]
 
@@ -418,7 +418,17 @@ def smart_split_html(text: str, max_length: int = 4000) -> List[str]:
     in_pre = False
     pre_lang = ""
 
+    # Break up any overly long unbroken lines first
+    safe_lines = []
     for line in text.split("\n"):
+        if len(line) > max_length - 100:
+            sub_step = max_length - 200
+            for start_idx in range(0, len(line), sub_step):
+                safe_lines.append(line[start_idx : start_idx + sub_step])
+        else:
+            safe_lines.append(line)
+
+    for line in safe_lines:
         line_len = len(line) + 1
         if "<pre" in line:
             in_pre = True

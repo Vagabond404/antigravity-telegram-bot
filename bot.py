@@ -166,28 +166,29 @@ async def safe_edit_message(
     if not msg or not text:
         return False
 
-    display = truncate_telegram_html(text, max_length=4000)
+    display = truncate_telegram_html(text, max_length=3800)
 
-    try:
-        await msg.edit_text(display, parse_mode=parse_mode, reply_markup=reply_markup)
-        return True
-    except RetryAfter as ra:
-        wait_secs = min(float(ra.retry_after), 6.0)
-        logger.warning(f"Telegram RetryAfter in safe_edit_message: waiting {wait_secs:.1f}s and retrying...")
-        await asyncio.sleep(wait_secs)
+    for attempt in range(2):
         try:
             await msg.edit_text(display, parse_mode=parse_mode, reply_markup=reply_markup)
             return True
-        except Exception as retry_err:
-            logger.debug(f"RetryAfter edit retry failed: {retry_err}")
-            return False
-    except Exception as e:
-        err_str = str(e).lower()
-        if "message is not modified" in err_str:
-            return True
-        if "can't parse" not in err_str and "bad request" not in err_str and "entities" not in err_str:
-            logger.debug(f"edit_text non-HTML warning: {e}")
-            return False
+        except RetryAfter as ra:
+            wait_secs = min(float(ra.retry_after), 8.0)
+            logger.warning(f"Telegram RetryAfter in safe_edit_message: waiting {wait_secs:.1f}s and retrying...")
+            await asyncio.sleep(wait_secs)
+            continue
+        except (TimedOut, NetworkError) as net_err:
+            logger.debug(f"Network transient error in safe_edit_message: {net_err}. Retrying in 1.5s...")
+            await asyncio.sleep(1.5)
+            continue
+        except Exception as e:
+            err_str = str(e).lower()
+            if "message is not modified" in err_str:
+                return True
+            if "can't parse" not in err_str and "bad request" not in err_str and "entities" not in err_str:
+                logger.debug(f"edit_text non-HTML warning: {e}")
+                return False
+            break
 
     sanitised = sanitize_telegram_html(display)
     try:
@@ -196,7 +197,7 @@ async def safe_edit_message(
     except Exception:
         pass
 
-    plain = strip_all_html(display)[:4000]
+    plain = strip_all_html(display)[:3800]
     try:
         await msg.edit_text(plain, reply_markup=reply_markup)
         return True
@@ -210,30 +211,69 @@ async def safe_reply_message(
     text: str,
     parse_mode=PM,
     reply_markup: Optional[InlineKeyboardMarkup] = None,
+    bot_instance: Optional[Any] = None,
+    chat_id: Optional[int] = None,
 ) -> object:
-    display = truncate_telegram_html(text, max_length=4000)
-    send_fn = getattr(update_or_msg, "reply_text", None) or getattr(
-        getattr(update_or_msg, "message", None), "reply_text", None
-    )
-    if not send_fn:
+    if not text:
         return None
+    display = truncate_telegram_html(text, max_length=3800)
 
-    try:
-        return await send_fn(display, parse_mode=parse_mode, reply_markup=reply_markup)
-    except Exception as e:
-        err_str = str(e).lower()
-        if "can't parse" in err_str or "bad request" in err_str or "entities" in err_str:
-            sanitised = sanitize_telegram_html(display)
-            try:
-                return await send_fn(sanitised, parse_mode=parse_mode, reply_markup=reply_markup)
-            except Exception:
-                pass
-        plain = strip_all_html(display)[:4000]
+    send_fn = getattr(update_or_msg, "reply_text", None)
+    if not send_fn and hasattr(update_or_msg, "message"):
+        send_fn = getattr(update_or_msg.message, "reply_text", None)
+
+    target_chat_id = chat_id
+    if not target_chat_id:
+        if hasattr(update_or_msg, "effective_chat") and update_or_msg.effective_chat:
+            target_chat_id = update_or_msg.effective_chat.id
+        elif hasattr(update_or_msg, "chat") and update_or_msg.chat:
+            target_chat_id = update_or_msg.chat.id
+
+    for attempt in range(2):
         try:
+            if send_fn:
+                return await send_fn(display, parse_mode=parse_mode, reply_markup=reply_markup)
+            elif bot_instance and target_chat_id:
+                return await bot_instance.send_message(chat_id=target_chat_id, text=display, parse_mode=parse_mode, reply_markup=reply_markup)
+        except RetryAfter as ra:
+            wait_secs = min(float(ra.retry_after), 8.0)
+            logger.warning(f"Telegram RetryAfter in safe_reply_message: waiting {wait_secs:.1f}s...")
+            await asyncio.sleep(wait_secs)
+            continue
+        except (TimedOut, NetworkError) as net_err:
+            logger.debug(f"Network error in safe_reply_message: {net_err}. Retrying in 1.5s...")
+            await asyncio.sleep(1.5)
+            continue
+        except Exception as e:
+            err_str = str(e).lower()
+            # If user deleted the replied message, fallback to direct message
+            if ("reply" in err_str and "not found" in err_str) or "message to be replied not found" in err_str:
+                if bot_instance and target_chat_id:
+                    try:
+                        return await bot_instance.send_message(chat_id=target_chat_id, text=display, parse_mode=parse_mode, reply_markup=reply_markup)
+                    except Exception:
+                        pass
+
+            if "can't parse" in err_str or "bad request" in err_str or "entities" in err_str:
+                sanitised = sanitize_telegram_html(display)
+                try:
+                    if send_fn:
+                        return await send_fn(sanitised, parse_mode=parse_mode, reply_markup=reply_markup)
+                    elif bot_instance and target_chat_id:
+                        return await bot_instance.send_message(chat_id=target_chat_id, text=sanitised, parse_mode=parse_mode, reply_markup=reply_markup)
+                except Exception:
+                    pass
+            break
+
+    plain = strip_all_html(display)[:3800]
+    try:
+        if send_fn:
             return await send_fn(plain, reply_markup=reply_markup)
-        except Exception as e2:
-            logger.error(f"Plain text reply failed: {e2}")
-            return None
+        elif bot_instance and target_chat_id:
+            return await bot_instance.send_message(chat_id=target_chat_id, text=plain, reply_markup=reply_markup)
+    except Exception as e2:
+        logger.error(f"Plain text reply failed: {e2}")
+        return None
 
 
 runner = AgentRunner()
@@ -438,6 +478,10 @@ async def post_init(application) -> None:
     if not IS_WINDOWS:
         asyncio.create_task(auto_heal_background_worker())
     asyncio.create_task(auto_update_watcher_worker(application))
+
+    # Autonomous Task Scheduler & Recurring Automations background loop
+    from scheduler_manager import scheduler_background_loop
+    asyncio.create_task(scheduler_background_loop(application))
 
 
 async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -720,6 +764,133 @@ async def cmd_usage(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 cmd_quota = cmd_usage
+
+
+def format_tasks_dashboard(user_lang: str = "fr", chat_id: Optional[int] = None) -> Tuple[str, InlineKeyboardMarkup]:
+    from scheduler_manager import list_tasks
+    tasks = list_tasks(chat_id=chat_id)
+    is_fr = (user_lang == "fr")
+    lines = [
+        "⏰ <b>Gestionnaire de Tâches Programmées &amp; Automations</b>\n" if is_fr
+        else "⏰ <b>Scheduled Tasks &amp; Autonomous Automations Dashboard</b>\n"
+    ]
+
+    if not tasks:
+        lines.append(
+            "<i>Aucune tâche programmée active pour le moment.</i>\n\n"
+            "💡 <b>Exemples de planification :</b>\n"
+            "• <code>/schedule in 30m | Rappelle-moi de vérifier la sauvegarde</code>\n"
+            "• <code>/schedule every 2h | Scanne les logs système et préviens Ange</code>\n"
+            "• <code>/schedule 18:00 | Fais un résumé des actualités IA</code>\n\n"
+            "🤖 <i>L'agent IA peut également programmer lui-même des tâches avec <code>python tasks.py add ...</code></i>"
+            if is_fr else
+            "<i>No active scheduled tasks at the moment.</i>\n\n"
+            "💡 <b>Schedule Examples:</b>\n"
+            "• <code>/schedule in 30m | Remind me to check the backup</code>\n"
+            "• <code>/schedule every 2h | Scan system logs and alert admin</code>\n"
+            "• <code>/schedule 18:00 | Summarize AI news</code>\n\n"
+            "🤖 <i>The AI agent can also natively schedule tasks using <code>python tasks.py add ...</code></i>"
+        )
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 Rafraîchir" if is_fr else "🔄 Refresh", callback_data="tasks_refresh")]
+        ])
+        return "\n".join(lines), kb
+
+    lines.append(f"<b>Tâches Enregistrées ({len(tasks)}) :</b>\n" if is_fr else f"<b>Registered Tasks ({len(tasks)}):</b>\n")
+
+    rows = []
+    for t in tasks[:8]:
+        st_icon = {"active": "🟢", "paused": "⏸️", "completed": "✅", "failed": "❌"}.get(t["status"], "🔹")
+        next_dt = datetime.fromtimestamp(t["next_run_ts"]).strftime("%d/%m à %H:%M") if t["next_run_ts"] > 0 else "N/A"
+        lines.append(f"• {st_icon} <b>#{t['id']} {html.escape(t['name'])}</b> ({html.escape(t['task_type'])})")
+        lines.append(f"    └ Planif : <code>{html.escape(t['schedule_expr'])}</code> | Prochain : <b>{next_dt}</b> | Runs : <code>{t['run_count']}</code>")
+
+        # Action buttons per task
+        t_buttons = []
+        if t["status"] == "active":
+            t_buttons.append(InlineKeyboardButton(f"⏸️ #{t['id']}", callback_data=f"task_pause:{t['id']}"))
+        elif t["status"] == "paused":
+            t_buttons.append(InlineKeyboardButton(f"▶️ #{t['id']}", callback_data=f"task_resume:{t['id']}"))
+        t_buttons.append(InlineKeyboardButton(f"⚡ #{t['id']}", callback_data=f"task_run:{t['id']}"))
+        t_buttons.append(InlineKeyboardButton(f"🗑️ #{t['id']}", callback_data=f"task_del:{t['id']}"))
+        rows.append(t_buttons)
+
+    rows.append([InlineKeyboardButton("🔄 Rafraîchir" if is_fr else "🔄 Refresh", callback_data="tasks_refresh")])
+    lines.append("")
+    lines.append("<i>💡 Utilisez <code>/schedule &lt;délai&gt; | &lt;action&gt;</code> pour ajouter une tâche.</i>" if is_fr else "<i>💡 Use <code>/schedule &lt;delay&gt; | &lt;action&gt;</code> to quickly schedule a task.</i>")
+
+    return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+async def cmd_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    uid = user.id if user else 0
+    if not is_admin(uid, user):
+        await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
+        return
+    user_lang = get_user_language(uid)
+    text, kb = format_tasks_dashboard(user_lang=user_lang, chat_id=update.effective_chat.id)
+    if update.callback_query:
+        await safe_edit_message(update.callback_query.message, text, reply_markup=kb)
+    else:
+        await update.message.reply_text(text, reply_markup=kb, parse_mode=PM)
+
+
+async def cmd_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    uid = user.id if user else 0
+    if not is_admin(uid, user):
+        await update.message.reply_text("⛔ Commande réservée à l'administrateur.")
+        return
+    user_lang = get_user_language(uid)
+    args = context.args or []
+    if not args:
+        await cmd_tasks(update, context)
+        return
+
+    raw_text = " ".join(args)
+    if "|" in raw_text:
+        parts = raw_text.split("|", 1)
+        when_expr = parts[0].strip()
+        payload = parts[1].strip()
+    else:
+        parts = raw_text.split(maxsplit=2)
+        if len(parts) >= 2 and parts[0].lower() in ("in", "dans", "every", "toutes"):
+            when_expr = f"{parts[0]} {parts[1]}"
+            payload = parts[2] if len(parts) > 2 else ""
+        else:
+            when_expr = parts[0]
+            payload = " ".join(parts[1:])
+
+    if not payload:
+        await update.message.reply_text(
+            "⚠️ <b>Syntaxe :</b> <code>/schedule &lt;quand&gt; | &lt;consigne ou rappel&gt;</code>\n"
+            "<i>Exemple :</i> <code>/schedule in 1h | Vérifie l'état du serveur</code>",
+            parse_mode=PM,
+        )
+        return
+
+    from scheduler_manager import add_task, get_task
+    tid = add_task(
+        name=payload[:30],
+        schedule_expr=when_expr,
+        payload=payload,
+        action_type="prompt",
+        chat_id=update.effective_chat.id,
+    )
+    task = get_task(tid)
+    next_dt = datetime.fromtimestamp(task["next_run_ts"]).strftime("%d/%m à %H:%M:%S") if task else "N/A"
+    confirm_text = (
+        f"✅ <b>Tâche #{tid} programmée avec succès !</b>\n\n"
+        f"• <b>Planification :</b> <code>{h(when_expr)}</code> (Prochain : <b>{next_dt}</b>)\n"
+        f"• <b>Action :</b> {h(payload)}\n\n"
+        f"<i>Tapez /tasks pour gérer l'ensemble des tâches programmées.</i>"
+    )
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📋 Voir les Tâches", callback_data="tasks_refresh")],
+        [InlineKeyboardButton("🗑️ Annuler", callback_data=f"task_del:{tid}")],
+    ])
+    await update.message.reply_text(confirm_text, reply_markup=kb, parse_mode=PM)
 
 
 
@@ -1529,7 +1700,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         from quota_manager import quota_mgr
         user_lang = get_user_language(uid)
         account_tier = settings.get("account_tier", "auto")
-        text = quota_mgr.format_usage_dashboard(user_lang=user_lang, account_tier=account_tier)
+        is_refresh = (data == "usage_refresh")
+        text = quota_mgr.format_usage_dashboard(user_lang=user_lang, account_tier=account_tier, force_refresh=is_refresh)
         kb = get_usage_keyboard(user_lang=user_lang)
         await safe_edit_message(query.message, text, reply_markup=kb)
         return
@@ -1548,6 +1720,54 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         text = quota_mgr.format_usage_dashboard(user_lang=user_lang, account_tier=account_tier)
         kb = get_usage_keyboard(user_lang=user_lang)
         await safe_edit_message(query.message, text, reply_markup=kb)
+        return
+
+    if data == "tasks_refresh":
+        await query.answer()
+        user_lang = get_user_language(uid)
+        text, kb = format_tasks_dashboard(user_lang=user_lang, chat_id=query.message.chat.id)
+        await safe_edit_message(query.message, text, reply_markup=kb)
+        return
+
+    if data.startswith("task_pause:"):
+        tid = int(data.split(":")[1])
+        from scheduler_manager import set_task_status
+        set_task_status(tid, "paused")
+        await query.answer("⏸️ Tâche suspendue.")
+        user_lang = get_user_language(uid)
+        text, kb = format_tasks_dashboard(user_lang=user_lang, chat_id=query.message.chat.id)
+        await safe_edit_message(query.message, text, reply_markup=kb)
+        return
+
+    if data.startswith("task_resume:"):
+        tid = int(data.split(":")[1])
+        from scheduler_manager import set_task_status
+        set_task_status(tid, "active")
+        await query.answer("▶️ Tâche réactivée.")
+        user_lang = get_user_language(uid)
+        text, kb = format_tasks_dashboard(user_lang=user_lang, chat_id=query.message.chat.id)
+        await safe_edit_message(query.message, text, reply_markup=kb)
+        return
+
+    if data.startswith("task_del:"):
+        tid = int(data.split(":")[1])
+        from scheduler_manager import delete_task
+        delete_task(tid)
+        await query.answer("🗑️ Tâche supprimée.")
+        user_lang = get_user_language(uid)
+        text, kb = format_tasks_dashboard(user_lang=user_lang, chat_id=query.message.chat.id)
+        await safe_edit_message(query.message, text, reply_markup=kb)
+        return
+
+    if data.startswith("task_run:"):
+        tid = int(data.split(":")[1])
+        from scheduler_manager import get_task, execute_task_now
+        task = get_task(tid)
+        if task:
+            await query.answer("⚡ Exécution de la tâche lancée...")
+            asyncio.create_task(execute_task_now(task, context.application))
+        else:
+            await query.answer("❌ Tâche introuvable.")
         return
 
     if data == "usage_test_live":
@@ -4100,6 +4320,9 @@ def main():
     app.add_handler(CommandHandler("usage", cmd_usage))
     app.add_handler(CommandHandler("quota", cmd_usage))
     app.add_handler(CommandHandler("quotas", cmd_usage))
+    app.add_handler(CommandHandler("tasks", cmd_tasks))
+    app.add_handler(CommandHandler("task", cmd_tasks))
+    app.add_handler(CommandHandler("schedule", cmd_schedule))
     app.add_handler(CommandHandler("effort", cmd_effort))
     app.add_handler(CommandHandler("mode", cmd_mode))
     app.add_handler(CommandHandler("agents", cmd_agents))
