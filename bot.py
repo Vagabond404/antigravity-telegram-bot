@@ -18,7 +18,7 @@ import json
 import html
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 from telegram import Update, constants, InputFile, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatType
