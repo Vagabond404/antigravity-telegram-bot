@@ -42,6 +42,7 @@ PROTECTED_USER_FILES = [
     "settings.json",
     "users.json",
     "memory.db",
+    "scheduled_tasks.db",
     "conversations.json",
     "pending_approvals.json",
     "incidents_history.json",
