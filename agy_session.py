@@ -62,15 +62,19 @@ def is_quota_error(error_msg: str) -> bool:
     return any(k in lower for k in QUOTA_ERROR_KEYWORDS)
 
 
-def _build_agy_env() -> Dict[str, str]:
+def _build_agy_env(extra_env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     """Build environment variables for `agy` subprocesses across CLI and systemd."""
     env = {
         **os.environ,
         "TERM": "dumb",
         "NO_COLOR": "1",
         "PYTHONUNBUFFERED": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8",
         "HOME": os.environ.get("HOME") or str(Path.home()),
     }
+    if extra_env:
+        env.update(extra_env)
     if not IS_WINDOWS:
         env.setdefault("SSH_CONNECTION", "1")
         env.setdefault("NODE_OPTIONS", "--dns-result-order=ipv4first")
@@ -83,14 +87,15 @@ class AgySession:
     Thread-safe and async-safe request queueing ensures only 1 turn executes at a time.
     """
 
-    def __init__(self):
+    def __init__(self, session_key: str = "default", default_workspace: Optional[Path] = None):
+        self.session_key = session_key
         self._process: Optional[asyncio.subprocess.Process] = None
         self._lock = asyncio.Lock()
         self._turn_in_progress: bool = False
         self._current_model: str = ""
         self._current_mode: str = "auto-approve"
         self._current_effort: str = "auto"
-        self._current_workspace: Path = config.WORKSPACE_DIR
+        self._current_workspace: Path = default_workspace or config.WORKSPACE_DIR
         self._active_conversation_id: Optional[str] = None
         self._has_active_session: bool = False
 
@@ -156,6 +161,7 @@ class AgySession:
             or not self.is_alive
             or (self._current_model and self._current_model != model)
             or (self._current_mode and self._current_mode != mode)
+            or (self._current_workspace and self._current_workspace != ws_dir)
         )
 
         if not needs_restart:
@@ -200,12 +206,20 @@ class AgySession:
 
         ws = ws_dir if ws_dir.exists() else config.WORKSPACE_DIR
 
+        extra_env: Dict[str, str] = {}
+        if settings.get("user_id"):
+            extra_env["AGY_USER_ID"] = str(settings["user_id"])
+        if settings.get("chat_id"):
+            extra_env["TG_TARGET_CHAT_ID"] = str(settings["chat_id"])
+        if settings.get("bot_token"):
+            extra_env["TG_BOT_TOKEN"] = str(settings["bot_token"])
+
         popen_kwargs: Dict[str, Any] = {
             "stdin": asyncio.subprocess.PIPE,
             "stdout": asyncio.subprocess.PIPE,
             "stderr": asyncio.subprocess.PIPE,
             "cwd": str(ws),
-            "env": _build_agy_env(),
+            "env": _build_agy_env(extra_env),
         }
         if IS_WINDOWS:
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
@@ -408,7 +422,7 @@ class AgySession:
                     nonlocal ui_last_rendered
                     while ui_active:
                         try:
-                            await asyncio.sleep(2.0)
+                            await asyncio.sleep(3.5)
                             if on_update:
                                 full = "".join(accumulated_text).strip()
                                 if full != ui_last_rendered or current_action:
@@ -458,7 +472,8 @@ class AgySession:
                                 and self._active_conversation_id
                                 and step_cid != self._active_conversation_id
                             )
-                            sub_prefix = "🤖 [Sous-Agent] " if is_subagent else ""
+                            subagent_model = su.get("model", "")
+                            sub_prefix = f"🤖 [Sous-Agent {subagent_model}] " if (is_subagent and subagent_model) else ("🤖 [Sous-Agent] " if is_subagent else "")
 
                             if stype == "agent_response":
                                 delta = su.get("text_delta", "")
@@ -588,12 +603,21 @@ class AgySession:
         if tool_name == "run_command":
             cmd_line = tool_args.get("CommandLine", "")
             return f"{prefix}⚙️ Command: {cmd_line[:60]}"
-        if tool_name == "view_file":
-            fpath = str(tool_args.get("AbsolutePath", "")).replace("\\", "/")
+        if tool_name in ("view_file", "read_file"):
+            fpath = str(tool_args.get("Path") or tool_args.get("AbsolutePath", "")).replace("\\", "/")
             return f"{prefix}📄 Reading: {fpath.split('/')[-1]}"
-        if tool_name in ("write_to_file", "replace_file_content", "multi_replace_file_content"):
-            fpath = str(tool_args.get("TargetFile", "")).replace("\\", "/")
+        if tool_name in ("write_file", "edit_file", "write_to_file", "replace_file_content", "multi_replace_file_content"):
+            fpath = str(tool_args.get("Path") or tool_args.get("TargetFile", "")).replace("\\", "/")
             return f"{prefix}✏️ Writing: {fpath.split('/')[-1]}"
+        if tool_name == "manage_task":
+            act = tool_args.get("Action", "status")
+            return f"{prefix}⏱️ Task Manager ({act})"
+        if tool_name == "schedule":
+            return f"{prefix}⏰ Scheduling Task"
+        if tool_name == "search_marketplace":
+            return f"{prefix}🛍️ Marketplace Search"
+        if tool_name == "ask_question":
+            return f"{prefix}❓ Asking Question"
         if tool_name == "search_web":
             q = tool_args.get("query", "")
             return f"{prefix}🔍 Web Search: {q[:45]}"
@@ -627,5 +651,36 @@ class AgySession:
         return f"{prefix}🔧 Tool: {tool_name}"
 
 
-# Singleton instance
-agy_session = AgySession()
+class AgySessionPool:
+    """Pool of warm agy processes keyed by user_id or workspace."""
+
+    def __init__(self):
+        self._sessions: Dict[str, AgySession] = {}
+        self._lock = asyncio.Lock()
+
+    def get_session(self, session_key: str = "default", default_workspace: Optional[Path] = None) -> AgySession:
+        if session_key not in self._sessions:
+            self._sessions[session_key] = AgySession(
+                session_key=session_key,
+                default_workspace=default_workspace,
+            )
+        return self._sessions[session_key]
+
+    async def abort_all(self):
+        for s in list(self._sessions.values()):
+            try:
+                await s.abort()
+            except Exception:
+                pass
+
+    async def close_all(self):
+        for s in list(self._sessions.values()):
+            try:
+                await s._stop_process()
+            except Exception:
+                pass
+        self._sessions.clear()
+
+
+session_pool = AgySessionPool()
+agy_session = session_pool.get_session("default")

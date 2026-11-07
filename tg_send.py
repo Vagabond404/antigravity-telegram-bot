@@ -27,9 +27,18 @@ ANIM_EXTS = {".gif"}
 def _get_target_chat_id(explicit_chat_id: Optional[str] = None) -> Optional[int]:
     if explicit_chat_id and str(explicit_chat_id).lstrip("-").isdigit():
         return int(explicit_chat_id)
+    env_target = os.environ.get("TG_TARGET_CHAT_ID", "").strip()
+    if env_target and env_target.lstrip("-").isdigit():
+        return int(env_target)
     if config.ALLOWED_USER_ID:
         return int(config.ALLOWED_USER_ID)
     return auth_mgr.get_primary_admin_id()
+
+
+def _get_bot_token(explicit_token: Optional[str] = None) -> str:
+    if explicit_token and explicit_token.strip():
+        return explicit_token.strip()
+    return os.environ.get("TG_BOT_TOKEN", "").strip() or config.TELEGRAM_BOT_TOKEN
 
 
 def _record_transient_msg(msg_id: int) -> None:
@@ -63,9 +72,15 @@ def _record_sent_file(file_path: Path) -> None:
         pass
 
 
-def send_message(text: str, parse_mode: str = "HTML", chat_id: Optional[int] = None, transient: bool = True) -> bool:
-    token = config.TELEGRAM_BOT_TOKEN
-    target = chat_id or _get_target_chat_id()
+def send_message(
+    text: str,
+    parse_mode: str = "HTML",
+    chat_id: Optional[int] = None,
+    transient: bool = True,
+    bot_token: Optional[str] = None,
+) -> bool:
+    token = _get_bot_token(bot_token)
+    target = _get_target_chat_id(str(chat_id) if chat_id else None)
     if not token or not target:
         print("Error: TELEGRAM_BOT_TOKEN or target chat_id missing in .env", file=sys.stderr)
         return False
@@ -95,13 +110,14 @@ def send_media_or_file(
     caption: str = "",
     media_type: str = "auto",
     chat_id: Optional[int] = None,
+    bot_token: Optional[str] = None,
 ) -> bool:
     """
     Send any file (photo, video, audio, voice, animation, or document) to Telegram.
     Automatically picks the optimal Telegram API endpoint and falls back to sendDocument if needed.
     """
-    token = config.TELEGRAM_BOT_TOKEN
-    target = chat_id or _get_target_chat_id()
+    token = _get_bot_token(bot_token)
+    target = _get_target_chat_id(str(chat_id) if chat_id else None)
     if not token or not target:
         print("Error: TELEGRAM_BOT_TOKEN or target chat_id missing in .env", file=sys.stderr)
         return False
@@ -191,24 +207,26 @@ def main():
     parser.add_argument("--document", default="", help="Send explicitly as document attachment")
     parser.add_argument("--caption", "-c", default="", help="Caption for the media/file")
     parser.add_argument("--chat-id", default="", help="Optional target Telegram chat ID")
+    parser.add_argument("--bot-token", default="", help="Optional target Telegram bot token")
     parser.add_argument("--permanent", action="store_true", help="Do not auto-delete text message at end of turn")
     args = parser.parse_args()
 
     target_chat = _get_target_chat_id(args.chat_id)
+    target_token = _get_bot_token(args.bot_token)
     cap = args.caption or args.message
 
     if args.photo:
-        sys.exit(0 if send_media_or_file(args.photo, cap, media_type="photo", chat_id=target_chat) else 1)
+        sys.exit(0 if send_media_or_file(args.photo, cap, media_type="photo", chat_id=target_chat, bot_token=target_token) else 1)
     if args.video:
-        sys.exit(0 if send_media_or_file(args.video, cap, media_type="video", chat_id=target_chat) else 1)
+        sys.exit(0 if send_media_or_file(args.video, cap, media_type="video", chat_id=target_chat, bot_token=target_token) else 1)
     if args.audio:
-        sys.exit(0 if send_media_or_file(args.audio, cap, media_type="audio", chat_id=target_chat) else 1)
+        sys.exit(0 if send_media_or_file(args.audio, cap, media_type="audio", chat_id=target_chat, bot_token=target_token) else 1)
     if args.voice:
-        sys.exit(0 if send_media_or_file(args.voice, cap, media_type="voice", chat_id=target_chat) else 1)
+        sys.exit(0 if send_media_or_file(args.voice, cap, media_type="voice", chat_id=target_chat, bot_token=target_token) else 1)
     if args.document:
-        sys.exit(0 if send_media_or_file(args.document, cap, media_type="document", chat_id=target_chat) else 1)
+        sys.exit(0 if send_media_or_file(args.document, cap, media_type="document", chat_id=target_chat, bot_token=target_token) else 1)
     if args.file:
-        sys.exit(0 if send_media_or_file(args.file, cap, media_type="auto", chat_id=target_chat) else 1)
+        sys.exit(0 if send_media_or_file(args.file, cap, media_type="auto", chat_id=target_chat, bot_token=target_token) else 1)
 
     text = args.message
     if not text and not sys.stdin.isatty():
@@ -218,7 +236,7 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    ok = send_message(text, chat_id=target_chat, transient=not args.permanent)
+    ok = send_message(text, chat_id=target_chat, transient=not args.permanent, bot_token=target_token)
     sys.exit(0 if ok else 1)
 
 

@@ -31,10 +31,9 @@ from config import (
     ACCOUNT_TIER_AUTO,
 )
 from memory_manager import get_relevant_context, auto_extract_and_store_facts
-from group_manager import group_mgr
 from resource_governor import governor
 from agent_registry import agent_registry
-from agy_session import agy_session, is_quota_error
+from agy_session import agy_session, session_pool, is_quota_error
 from i18n import t
 
 logger = logging.getLogger("agent_runner")
@@ -193,6 +192,8 @@ def _build_agy_env() -> Dict[str, str]:
         "TERM": "dumb",
         "NO_COLOR": "1",
         "PYTHONUNBUFFERED": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8",
         "HOME": os.environ.get("HOME") or str(Path.home()),
     }
     if not IS_WINDOWS:
@@ -412,7 +413,7 @@ async def manage_remote_control(action: str) -> Tuple[bool, str]:
 
 async def update_cli_binary() -> Tuple[bool, str]:
     """Run `agy update` to update the Antigravity CLI binary to the latest version."""
-    rc, out, err = await run_agy_subcommand(["update"], timeout=120.0)
+    rc, out, err = await run_agy_subcommand(["update"], timeout=300.0)
     return (rc == 0), (out or err or "Antigravity CLI update completed.")
 
 
@@ -475,6 +476,9 @@ class AgentRunner:
         on_model_fallback: Optional[Callable] = None,
         on_tool_call: Optional[Callable] = None,
         on_tool_result: Optional[Callable] = None,
+        user_id: Optional[int] = None,
+        chat_id: Optional[int] = None,
+        bot_token: Optional[str] = None,
     ) -> Tuple[str, bool]:
         bin_path = find_agy_binary(config.AGY_BIN_PATH)
         if not bin_path:
@@ -485,10 +489,27 @@ class AgentRunner:
                 False,
             )
 
+        from auth_manager import auth_mgr
+
+        user_info = auth_mgr.get_user(user_id) if user_id else None
+        iso_cfg = user_info.get("isolation", {}) if user_info else {}
+        is_isolated = bool(iso_cfg.get("mode") == "isolated" or iso_cfg.get("isolated_workspace", False))
+        session_key = f"user_{user_id}" if (user_id and is_isolated) else "default"
+        user_ws = auth_mgr.get_user_workspace(user_id) if user_id else config.WORKSPACE_DIR
+        target_session = session_pool.get_session(session_key, default_workspace=user_ws)
+
         available_models = await fetch_available_models(force_refresh=False)
         model_ids = [m[0] for m in available_models if m[0] != "auto"] or [
             m[0] for m in DEFAULT_MODELS_LIST if m[0] != "auto"
         ]
+
+        # Enforce allowed_models if restricted for this user
+        if user_info:
+            allowed_mods = user_info.get("permissions", {}).get("allowed_models", [])
+            if allowed_mods:
+                filtered_ids = [m for m in model_ids if m in allowed_mods]
+                if filtered_ids:
+                    model_ids = filtered_ids
 
         account_tier = settings.get("account_tier", ACCOUNT_TIER_AUTO)
         preferred_model = settings.get("model", "auto")
@@ -529,29 +550,43 @@ class AgentRunner:
         governor.start_turn()
         self._is_running_prompt = True
         try:
+            # Memory isolation
+            isolated_mem = bool(iso_cfg.get("isolated_memory", True)) if user_info else False
+            mem_uid = str(user_id) if (user_id and isolated_mem) else "default"
+
             try:
-                auto_extract_and_store_facts(prompt)
+                auto_extract_and_store_facts(prompt, user_id=mem_uid)
             except Exception as e:
                 logger.debug(f"Auto memory extraction skipped: {e}")
 
-            memory_ctx = get_relevant_context(prompt)
-            group_ctx = group_mgr.get_groups_context_for_agent(prompt)
+            memory_ctx = get_relevant_context(prompt, user_id=mem_uid if isolated_mem else None)
             system_prompt = build_system_prompt(settings)
 
-            if agy_session.has_active_session:
+            # Inject user-specific constraints if permissions restricted
+            perm_constraints = []
+            if user_info and not auth_mgr.can_user_do(user_id, "can_use_bash"):
+                perm_constraints.append("RESTRICTION: You are strictly forbidden from running shell or bash commands. Do NOT use run_command.")
+            if user_info and not auth_mgr.can_user_do(user_id, "can_use_web"):
+                perm_constraints.append("RESTRICTION: You are strictly forbidden from searching the web or fetching URLs.")
+            if user_info and not auth_mgr.can_user_do(user_id, "can_use_subagents"):
+                perm_constraints.append("RESTRICTION: You are strictly forbidden from creating or invoking subagents.")
+
+            constraint_text = ("\n" + "\n".join(perm_constraints)) if perm_constraints else ""
+
+            if target_session.has_active_session:
                 prompt_parts = []
                 if memory_ctx:
                     prompt_parts.append(memory_ctx.strip())
-                if group_ctx:
-                    prompt_parts.append(group_ctx.strip())
+                if constraint_text:
+                    prompt_parts.append(constraint_text.strip())
                 prompt_parts.append(f"[USER PROMPT]\n{prompt}")
                 enhanced_prompt = "\n\n".join(prompt_parts)
             else:
                 prompt_parts = [system_prompt]
                 if memory_ctx:
                     prompt_parts.append(memory_ctx.strip())
-                if group_ctx:
-                    prompt_parts.append(group_ctx.strip())
+                if constraint_text:
+                    prompt_parts.append(constraint_text.strip())
                 prompt_parts.append(f"[USER PROMPT]\n{prompt}")
                 enhanced_prompt = "\n\n".join(prompt_parts)
 
@@ -577,8 +612,17 @@ class AgentRunner:
 
                 current_settings = dict(settings)
                 current_settings["model"] = current_model
+                current_settings["workspace_dir"] = str(user_ws)
+                if user_id:
+                    current_settings["user_id"] = str(user_id)
+                if chat_id:
+                    current_settings["chat_id"] = str(chat_id)
+                if bot_token:
+                    current_settings["bot_token"] = str(bot_token)
+                if iso_cfg.get("sandbox", True):
+                    current_settings["sandbox"] = True
 
-                response_text, is_success, is_quota = await agy_session.execute_turn(
+                response_text, is_success, is_quota = await target_session.execute_turn(
                     prompt=enhanced_prompt,
                     settings=current_settings,
                     on_update=on_update,
@@ -588,6 +632,9 @@ class AgentRunner:
                 )
 
                 if is_success:
+                    if user_id:
+                        total_tok = target_session.last_usage.get("total_tokens", 0)
+                        auth_mgr.record_turn_usage(user_id, total_tok)
                     return (response_text, True)
 
                 if "Execution stopped by user" in response_text or "interrompue par l'utilisateur" in response_text or not self._is_running_prompt:
@@ -600,7 +647,7 @@ class AgentRunner:
                     except Exception:
                         pass
                     # Reset active conversation ID so the next fallback model runs with a clean state
-                    agy_session.reset_session()
+                    target_session.reset_session()
                     last_error = response_text
                     continue
 

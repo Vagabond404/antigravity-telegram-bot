@@ -10,6 +10,7 @@ model_quotas.json
 groups.json
 school_data.json
 workspace/
+workspaces/
 *.pem
 *.key
 

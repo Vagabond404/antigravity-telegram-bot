@@ -4,6 +4,7 @@ mem.py - Second Brain, Person Profiles, Social Graph & Long-Term Memory CLI
 Enhanced for Antigravity Telegram Agent v5.1
 """
 import sys
+import os
 import argparse
 import json
 
@@ -23,6 +24,7 @@ from memory_manager import (
 
 def main():
     parser = argparse.ArgumentParser(description='Antigravity Second Brain & Advanced Long-Term Memory CLI')
+    parser.add_argument('--user-id', '-u', default=os.environ.get("AGY_USER_ID", "default"), help='User ID for isolated memory partition')
     subparsers = parser.add_subparsers(dest='command')
 
     # add memory
@@ -109,12 +111,13 @@ def main():
             key=args.key,
             tags=args.tags,
             related_to=args.related,
-            importance=args.importance
+            importance=args.importance,
+            user_id=getattr(args, 'user_id', 'default'),
         )
         print(f"✅ Souvenir mémorisé avec succès [ID: #{mid}, Catégorie: {args.category}]")
 
     elif args.command == 'search':
-        res = search_memories(args.query, limit=args.limit, category=args.category)
+        res = search_memories(args.query, limit=args.limit, category=args.category, user_id=getattr(args, 'user_id', 'default'))
         if not res:
             print("🔍 Aucun souvenir correspondant trouvé.")
         else:
@@ -124,14 +127,14 @@ def main():
                 print(f"  • [#{m['id']}] [{m['category']}{key_s}] : {m['content']}")
 
     elif args.command == 'list':
-        res = list_memories(category=args.category, limit=args.limit)
+        res = list_memories(category=args.category, limit=args.limit, user_id=getattr(args, 'user_id', 'default'))
         print(f"📋 {len(res)} souvenir(s) dans la mémoire :")
         for m in res:
             key_s = f" ({m['key']})" if m.get('key') else ""
             print(f"  • [#{m['id']}] [{m['category']}{key_s}] : {m['content']}")
 
     elif args.command == 'delete':
-        ok = delete_memory(args.id)
+        ok = delete_memory(args.id, user_id=getattr(args, 'user_id', 'default'))
         print(f"🗑️ Souvenir #{args.id} supprimé." if ok else f"❌ Souvenir #{args.id} introuvable.")
 
     elif args.command == 'graph':

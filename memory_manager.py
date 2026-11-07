@@ -246,15 +246,20 @@ def search_memory(
 
     conn = get_db(db_path)
     cur = conn.cursor()
+    conditions = []
+    params = []
     if category:
-        cur.execute(
-            "SELECT id, content, category, key, tags, importance, embedding, created_at FROM memories WHERE category = ?",
-            (category,),
-        )
-    else:
-        cur.execute(
-            "SELECT id, content, category, key, tags, importance, embedding, created_at FROM memories"
-        )
+        conditions.append("category = ?")
+        params.append(category)
+    if user_id:
+        conditions.append("user_id = ?")
+        params.append(str(user_id))
+
+    sql = "SELECT id, content, category, key, tags, importance, embedding, created_at FROM memories"
+    if conditions:
+        sql += " WHERE " + " AND ".join(conditions)
+
+    cur.execute(sql, tuple(params))
     rows = cur.fetchall()
     conn.close()
 
@@ -321,16 +326,22 @@ def list_memories(
 ) -> List[Dict[str, Any]]:
     conn = get_db(db_path)
     cur = conn.cursor()
+    conditions = []
+    params = []
     if category:
-        cur.execute(
-            "SELECT id, content, category, key, tags, importance, created_at, updated_at FROM memories WHERE category = ? ORDER BY importance DESC, updated_at DESC LIMIT ?",
-            (category, limit),
-        )
-    else:
-        cur.execute(
-            "SELECT id, content, category, key, tags, importance, created_at, updated_at FROM memories ORDER BY importance DESC, updated_at DESC LIMIT ?",
-            (limit,),
-        )
+        conditions.append("category = ?")
+        params.append(category)
+    if user_id:
+        conditions.append("user_id = ?")
+        params.append(str(user_id))
+
+    sql = "SELECT id, content, category, key, tags, importance, created_at, updated_at FROM memories"
+    if conditions:
+        sql += " WHERE " + " AND ".join(conditions)
+    sql += " ORDER BY importance DESC, updated_at DESC LIMIT ?"
+    params.append(limit)
+
+    cur.execute(sql, tuple(params))
     rows = cur.fetchall()
     conn.close()
     return [
@@ -348,16 +359,22 @@ def list_memories(
     ]
 
 
-def list_memories_by_categories(categories: List[str], limit: int = 25, db_path: str = DB_PATH) -> List[Dict[str, Any]]:
+def list_memories_by_categories(categories: List[str], limit: int = 25, user_id: Optional[str] = None, db_path: str = DB_PATH) -> List[Dict[str, Any]]:
     if not categories:
         return []
     conn = get_db(db_path)
     cur = conn.cursor()
     placeholders = ",".join("?" for _ in categories)
-    cur.execute(
-        f"SELECT id, content, category, key, tags, importance, created_at, updated_at FROM memories WHERE category IN ({placeholders}) ORDER BY importance DESC, updated_at DESC LIMIT ?",
-        (*categories, limit),
-    )
+    if user_id:
+        cur.execute(
+            f"SELECT id, content, category, key, tags, importance, created_at, updated_at FROM memories WHERE category IN ({placeholders}) AND user_id = ? ORDER BY importance DESC, updated_at DESC LIMIT ?",
+            (*categories, str(user_id), limit),
+        )
+    else:
+        cur.execute(
+            f"SELECT id, content, category, key, tags, importance, created_at, updated_at FROM memories WHERE category IN ({placeholders}) ORDER BY importance DESC, updated_at DESC LIMIT ?",
+            (*categories, limit),
+        )
     rows = cur.fetchall()
     conn.close()
     return [
@@ -378,7 +395,10 @@ def list_memories_by_categories(categories: List[str], limit: int = 25, db_path:
 def delete_memory(memory_id: int, user_id: Optional[str] = None, db_path: str = DB_PATH) -> bool:
     conn = get_db(db_path)
     cur = conn.cursor()
-    cur.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
+    if user_id:
+        cur.execute("DELETE FROM memories WHERE id = ? AND user_id = ?", (memory_id, str(user_id)))
+    else:
+        cur.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
     affected = cur.rowcount > 0
     conn.commit()
     conn.close()
@@ -710,7 +730,7 @@ def search_memories(
     return search_memory(query=query, limit=limit, category=category, user_id=user_id)
 
 
-def auto_extract_and_store_facts(user_text: str) -> List[str]:
+def auto_extract_and_store_facts(user_text: str, user_id: str = "default") -> List[str]:
     """
     Automatically detect explicit user statements (personal info, preferences,
     explicit 'remember this' requests, social relations, speech tone instructions,
@@ -766,7 +786,7 @@ def auto_extract_and_store_facts(user_text: str) -> List[str]:
         if m:
             fact = m.group(0).strip()
             if len(fact) <= 400:
-                add_memory(content=fact, category=cat, importance=imp)
+                add_memory(content=fact, category=cat, importance=imp, user_id=user_id)
                 captured.append(fact)
                 break
 
@@ -894,10 +914,11 @@ def get_relevant_context(query: str, user_id: Optional[str] = None) -> str:
             det = f" ({r['details']})" if r.get("details") else ""
             rel_lines.append(f"• 🔗 {r['person_a']} est {r['relation_type']} de {r['person_b']}{det}")
 
-    # 1. Core Profile, Preferences & Rules (Always injected)
+    # 1. Core Profile, Preferences & Rules (Filtered by user_id if provided)
     core_mems = list_memories_by_categories(
         ["profile", "user_profile", "preferences", "rules", "user_note"],
         limit=20,
+        user_id=user_id,
     )
     core_lines = []
     for m in core_mems:
@@ -906,10 +927,11 @@ def get_relevant_context(query: str, user_id: Optional[str] = None) -> str:
             core_lines.append(f"• [{m['category']}{k_str}] {m['content']}")
             seen_contents.add(m["content"])
 
-    # 2. Projects & Infrastructure memories
+    # 2. Projects & Infrastructure memories (Filtered by user_id if provided)
     proj_mems = list_memories_by_categories(
         ["projet", "projects", "project", "infra"],
         limit=15,
+        user_id=user_id,
     )
     proj_lines = []
     for m in proj_mems:

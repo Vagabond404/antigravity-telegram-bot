@@ -600,15 +600,14 @@ def get_settings_keyboard(settings: dict, user_lang: str = "en") -> InlineKeyboa
                 InlineKeyboardButton("🕹️ Commandes (/commands)", callback_data="menu_commands"),
             ],
             [
-                InlineKeyboardButton("🏫 Groupes (/groups)", callback_data="menu_groups"),
+                InlineKeyboardButton("👥 Utilisateurs (/users)", callback_data="auth:refresh"),
                 InlineKeyboardButton("🌐 Langue / Language", callback_data="menu_language"),
             ],
             [
                 InlineKeyboardButton("🔄 Maj Système (/update)", callback_data="sys_update:check"),
-                InlineKeyboardButton("👥 Utilisateurs & Accès", callback_data="auth:refresh"),
+                InlineKeyboardButton("🔄 Par défaut", callback_data="reset_settings"),
             ],
             [
-                InlineKeyboardButton("🔄 Par défaut", callback_data="reset_settings"),
                 InlineKeyboardButton("❌ Fermer", callback_data="close_menu"),
             ],
         ]
@@ -666,15 +665,14 @@ def get_settings_keyboard(settings: dict, user_lang: str = "en") -> InlineKeyboa
                 InlineKeyboardButton("🕹️ Commands (/commands)", callback_data="menu_commands"),
             ],
             [
-                InlineKeyboardButton("🏫 Groups (/groups)", callback_data="menu_groups"),
+                InlineKeyboardButton("👥 Users (/users)", callback_data="auth:refresh"),
                 InlineKeyboardButton("🌐 Language", callback_data="menu_language"),
             ],
             [
                 InlineKeyboardButton("🔄 Update System (/update)", callback_data="sys_update:check"),
-                InlineKeyboardButton("👥 Users & Access", callback_data="auth:refresh"),
+                InlineKeyboardButton("🔄 Reset to Default", callback_data="reset_settings"),
             ],
             [
-                InlineKeyboardButton("🔄 Reset to Default", callback_data="reset_settings"),
                 InlineKeyboardButton("❌ Close", callback_data="close_menu"),
             ],
         ]
@@ -701,23 +699,34 @@ def get_account_tier_selection_keyboard(current_tier: str, user_lang: str = "en"
     return InlineKeyboardMarkup(keyboard)
 
 
-def get_mode_selection_keyboard(current_mode: str) -> InlineKeyboardMarkup:
-    modes = [
-        ("auto-approve", "⚡ Autonome (--dangerously-skip-permissions)"),
-        ("accept-edits", "✏️ Accepter Éditions (--mode accept-edits)"),
-        ("plan", "📋 Planification seule (--mode plan)"),
-    ]
+def get_mode_selection_keyboard(current_mode: str, user_lang: str = "en") -> InlineKeyboardMarkup:
+    is_fr = (user_lang == "fr")
+    if is_fr:
+        modes = [
+            ("auto-approve", "⚡ Autonome (--dangerously-skip-permissions)"),
+            ("accept-edits", "✏️ Accepter Éditions (--mode accept-edits)"),
+            ("plan", "📋 Planification seule (--mode plan)"),
+        ]
+        btn_back = "⬅️ Retour au Centre de Contrôle"
+    else:
+        modes = [
+            ("auto-approve", "⚡ Autonomous (--dangerously-skip-permissions)"),
+            ("accept-edits", "✏️ Accept Edits (--mode accept-edits)"),
+            ("plan", "📋 Plan Only (--mode plan)"),
+        ]
+        btn_back = "⬅️ Back to Control Center"
     keyboard = []
     for mode_val, label in modes:
         check = " ✅" if mode_val == current_mode else ""
         keyboard.append([InlineKeyboardButton(f"{label}{check}", callback_data=f"set_mode:{mode_val}")])
-    keyboard.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+    keyboard.append([InlineKeyboardButton(btn_back, callback_data="menu_main")])
     return InlineKeyboardMarkup(keyboard)
 
 
 def get_model_selection_keyboard(
     current_model: str,
     available_models: Optional[List[Tuple[str, str]]] = None,
+    user_lang: str = "en",
 ) -> InlineKeyboardMarkup:
     from agent_runner import get_cached_models
     models = available_models or get_cached_models()
@@ -730,9 +739,15 @@ def get_model_selection_keyboard(
             display_btn = f"{label[:45]}{check}"
         keyboard.append([InlineKeyboardButton(display_btn, callback_data=f"set_model:{mod_val}")])
 
-    keyboard.append([InlineKeyboardButton("📊 Voir Quotas & Utilisation (/usage)", callback_data="cmd_usage")])
-    keyboard.append([InlineKeyboardButton("🔄 Rafraîchir depuis Antigravity CLI (agy models)", callback_data="refresh_models")])
-    keyboard.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+    is_fr = (user_lang == "fr")
+    if is_fr:
+        keyboard.append([InlineKeyboardButton("📊 Voir Quotas & Utilisation (/usage)", callback_data="cmd_usage")])
+        keyboard.append([InlineKeyboardButton("🔄 Rafraîchir depuis Antigravity CLI (agy models)", callback_data="refresh_models")])
+        keyboard.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+    else:
+        keyboard.append([InlineKeyboardButton("📊 View Quotas & Usage (/usage)", callback_data="cmd_usage")])
+        keyboard.append([InlineKeyboardButton("🔄 Refresh from Antigravity CLI (agy models)", callback_data="refresh_models")])
+        keyboard.append([InlineKeyboardButton("⬅️ Back to Control Center", callback_data="menu_main")])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -763,70 +778,126 @@ def get_usage_keyboard(user_lang: str = "en") -> InlineKeyboardMarkup:
 
 
 
-def get_effort_selection_keyboard(current_effort: str) -> InlineKeyboardMarkup:
-    efforts = [
-        ("auto", "🤖 Auto (Adapté automatiquement au modèle)"),
-        ("low", "⚡ Rapide (low — direct & ultra-réactif)"),
-        ("medium", "⚖️ Équilibré (medium — analyse standard)"),
-        ("high", "🧠 Profond (high — réflexion avancée)"),
-        ("xhigh", "🔥 Très Profond (xhigh — raisonnement intensif)"),
-        ("max", "🚀 Maximum (max — capacité de réflexion maximale)"),
-    ]
+def get_effort_selection_keyboard(current_effort: str, user_lang: str = "en") -> InlineKeyboardMarkup:
+    is_fr = (user_lang == "fr")
+    if is_fr:
+        efforts = [
+            ("auto", "🤖 Auto (Adapté automatiquement au modèle)"),
+            ("low", "⚡ Rapide (low — direct & ultra-réactif)"),
+            ("medium", "⚖️ Équilibré (medium — analyse standard)"),
+            ("high", "🧠 Profond (high — réflexion avancée)"),
+            ("xhigh", "🔥 Très Profond (xhigh — raisonnement intensif)"),
+            ("max", "🚀 Maximum (max — capacité de réflexion maximale)"),
+        ]
+        btn_back = "⬅️ Retour au Centre de Contrôle"
+    else:
+        efforts = [
+            ("auto", "🤖 Auto (Automatically adapted to model)"),
+            ("low", "⚡ Fast (low — fast & responsive)"),
+            ("medium", "⚖️ Balanced (medium — standard reasoning)"),
+            ("high", "🧠 Deep (high — advanced reasoning)"),
+            ("xhigh", "🔥 Very Deep (xhigh — intensive reasoning)"),
+            ("max", "🚀 Maximum (max — highest reasoning effort)"),
+        ]
+        btn_back = "⬅️ Back to Control Center"
     keyboard = []
     for eff_val, label in efforts:
         check = " ✅" if eff_val == current_effort else ""
         keyboard.append([InlineKeyboardButton(f"{label}{check}", callback_data=f"set_effort:{eff_val}")])
-    keyboard.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+    keyboard.append([InlineKeyboardButton(btn_back, callback_data="menu_main")])
     return InlineKeyboardMarkup(keyboard)
 
 
-def get_timeout_selection_keyboard(current_timeout: int) -> InlineKeyboardMarkup:
-    timeouts = [
-        (120, "⏱️ 2 minutes"),
-        (300, "⏱️ 5 minutes"),
-        (600, "⏱️ 10 minutes (recommandé)"),
-        (1800, "⏱️ 30 minutes"),
-        (3600, "⏱️ 1 heure"),
-        (0, "♾️ Infini (aucune limite — idéal pour /goal)"),
-    ]
+def get_timeout_selection_keyboard(current_timeout: int, user_lang: str = "en") -> InlineKeyboardMarkup:
+    is_fr = (user_lang == "fr")
+    if is_fr:
+        timeouts = [
+            (120, "⏱️ 2 minutes"),
+            (300, "⏱️ 5 minutes"),
+            (600, "⏱️ 10 minutes (recommandé)"),
+            (1800, "⏱️ 30 minutes"),
+            (3600, "⏱️ 1 heure"),
+            (0, "♾️ Infini (aucune limite — idéal pour /goal)"),
+        ]
+        btn_back = "⬅️ Retour au Centre de Contrôle"
+    else:
+        timeouts = [
+            (120, "⏱️ 2 minutes"),
+            (300, "⏱️ 5 minutes"),
+            (600, "⏱️ 10 minutes (recommended)"),
+            (1800, "⏱️ 30 minutes"),
+            (3600, "⏱️ 1 hour"),
+            (0, "♾️ Infinite (no limit — ideal for /goal)"),
+        ]
+        btn_back = "⬅️ Back to Control Center"
     keyboard = []
     for t_val, label in timeouts:
         check = " ✅" if t_val == current_timeout else ""
         keyboard.append([InlineKeyboardButton(f"{label}{check}", callback_data=f"set_timeout:{t_val}")])
-    keyboard.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+    keyboard.append([InlineKeyboardButton(btn_back, callback_data="menu_main")])
     return InlineKeyboardMarkup(keyboard)
 
 
-def get_verbosity_selection_keyboard(current_verbosity: str) -> InlineKeyboardMarkup:
-    levels = [
-        ("compact", "🧼 Compact (Masquer les blocs d'outils à la fin)"),
-        ("normal", "⚖️ Normal (Afficher les outils en direct, nettoyer à la fin)"),
-        ("detailed", "🔬 Détaillé (Conserver les blocs d'outils dépliables dans la réponse)"),
-    ]
+def get_verbosity_selection_keyboard(current_verbosity: str, user_lang: str = "en") -> InlineKeyboardMarkup:
+    is_fr = (user_lang == "fr")
+    if is_fr:
+        levels = [
+            ("compact", "🧼 Compact (Masquer les blocs d'outils à la fin)"),
+            ("normal", "⚖️ Normal (Afficher les outils en direct, nettoyer à la fin)"),
+            ("detailed", "🔬 Détaillé (Conserver les blocs d'outils dépliables dans la réponse)"),
+        ]
+        btn_back = "⬅️ Retour au Centre de Contrôle"
+    else:
+        levels = [
+            ("compact", "🧼 Compact (Hide tool blocks when done)"),
+            ("normal", "⚖️ Normal (Stream live tools, clean at end)"),
+            ("detailed", "🔬 Detailed (Keep collapsible tool blocks in response)"),
+        ]
+        btn_back = "⬅️ Back to Control Center"
     keyboard = []
     for val, label in levels:
         check = " ✅" if val == current_verbosity else ""
         keyboard.append([InlineKeyboardButton(f"{label}{check}", callback_data=f"set_verbosity:{val}")])
-    keyboard.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+    keyboard.append([InlineKeyboardButton(btn_back, callback_data="menu_main")])
     return InlineKeyboardMarkup(keyboard)
 
 
-def get_agents_keyboard(settings: dict, available_agents: List[Dict[str, str]]) -> InlineKeyboardMarkup:
+def get_agents_keyboard(settings: dict, available_agents: List[Dict[str, str]], user_lang: str = "en") -> InlineKeyboardMarkup:
     from agent_registry import agent_registry
     agents = agent_registry.list_agents(include_disabled=True)
     autonomy = settings.get("agent_creation_autonomy", "ask")
-    return get_subagents_team_keyboard(agents, autonomy)
+    return get_subagents_team_keyboard(agents, autonomy, user_lang=user_lang)
 
 
-def get_subagents_team_keyboard(agents: List[Dict[str, Any]], autonomy: str = "ask") -> InlineKeyboardMarkup:
-    rows = []
-    autonomy_labels = {
-        "ask": "✋ Demander (Validation)",
-        "auto": "⚡ Auto (Création directe)",
-        "off": "⛔ Off (Désactivé)",
-    }
+def get_subagents_team_keyboard(agents: List[Dict[str, Any]], autonomy: str = "ask", user_lang: str = "en") -> InlineKeyboardMarkup:
+    is_fr = (user_lang == "fr")
+    if is_fr:
+        autonomy_labels = {
+            "ask": "✋ Demander (Validation)",
+            "auto": "⚡ Auto (Création directe)",
+            "off": "⛔ Off (Désactivé)",
+        }
+        btn_create = "➕ Créer un Agent"
+        btn_import = "📥 Importer (.md/.zip)"
+        btn_export = "📤 Exporter l'Équipe (ZIP)"
+        btn_refresh = "🔄 Rafraîchir"
+        btn_back = "⬅️ Retour au Centre de Contrôle"
+        auto_title = "⚙️ Autonomie Création : "
+    else:
+        autonomy_labels = {
+            "ask": "✋ Ask (Approval)",
+            "auto": "⚡ Auto (Direct creation)",
+            "off": "⛔ Off (Disabled)",
+        }
+        btn_create = "➕ Create Agent"
+        btn_import = "📥 Import (.md/.zip)"
+        btn_export = "📤 Export Team (ZIP)"
+        btn_refresh = "🔄 Refresh"
+        btn_back = "⬅️ Back to Control Center"
+        auto_title = "⚙️ Creation Autonomy: "
+
     cur_auto_label = autonomy_labels.get(autonomy, autonomy)
-
+    rows = []
     for ag in agents:
         name = ag.get("name", "")
         disp = ag.get("display_name", name)
@@ -838,43 +909,57 @@ def get_subagents_team_keyboard(agents: List[Dict[str, Any]], autonomy: str = "a
         ])
 
     rows.append([
-        InlineKeyboardButton(f"⚙️ Autonomie Création : {cur_auto_label}", callback_data="cycle_autonomy")
+        InlineKeyboardButton(f"{auto_title}{cur_auto_label}", callback_data="cycle_autonomy")
     ])
     rows.append([
-        InlineKeyboardButton("➕ Créer un Agent", callback_data="subagent_create_prompt"),
-        InlineKeyboardButton("📥 Importer (.md/.zip)", callback_data="subagent_import_prompt"),
+        InlineKeyboardButton(btn_create, callback_data="subagent_create_prompt"),
+        InlineKeyboardButton(btn_import, callback_data="subagent_import_prompt"),
     ])
     rows.append([
-        InlineKeyboardButton("📤 Exporter l'Équipe (ZIP)", callback_data="subagent_export_all"),
-        InlineKeyboardButton("🔄 Rafraîchir", callback_data="cmd_agents"),
+        InlineKeyboardButton(btn_export, callback_data="subagent_export_all"),
+        InlineKeyboardButton(btn_refresh, callback_data="cmd_agents"),
     ])
-    rows.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+    rows.append([InlineKeyboardButton(btn_back, callback_data="menu_main")])
     return InlineKeyboardMarkup(rows)
 
 
-def get_subagent_detail_keyboard(name: str, agent: Dict[str, Any]) -> InlineKeyboardMarkup:
+def get_subagent_detail_keyboard(name: str, agent: Dict[str, Any], user_lang: str = "en") -> InlineKeyboardMarkup:
     is_en = agent.get("enabled", True)
-    toggle_text = "⚪ Désactiver ce sous-agent" if is_en else "🟢 Activer ce sous-agent"
+    is_fr = (user_lang == "fr")
+    if is_fr:
+        toggle_text = "⚪ Désactiver ce sous-agent" if is_en else "🟢 Activer ce sous-agent"
+        btn_export = "📤 Exporter ce fichier (.md)"
+        btn_delete = "🗑️ Supprimer ce sous-agent"
+        btn_back = "⬅️ Retour à l'équipe (/agents)"
+    else:
+        toggle_text = "⚪ Disable this subagent" if is_en else "🟢 Enable this subagent"
+        btn_export = "📤 Export this file (.md)"
+        btn_delete = "🗑️ Delete this subagent"
+        btn_back = "⬅️ Back to team (/agents)"
     rows = [
         [InlineKeyboardButton(toggle_text, callback_data=f"subagent_toggle:{name}")],
-        [InlineKeyboardButton("📤 Exporter ce fichier (.md)", callback_data=f"subagent_export:{name}")],
-        [InlineKeyboardButton("🗑️ Supprimer ce sous-agent", callback_data=f"subagent_delete:{name}")],
-        [InlineKeyboardButton("⬅️ Retour à l'équipe (/agents)", callback_data="cmd_agents")],
+        [InlineKeyboardButton(btn_export, callback_data=f"subagent_export:{name}")],
+        [InlineKeyboardButton(btn_delete, callback_data=f"subagent_delete:{name}")],
+        [InlineKeyboardButton(btn_back, callback_data="cmd_agents")],
     ]
     return InlineKeyboardMarkup(rows)
 
 
-def get_agent_creation_confirm_keyboard(temp_agent_id: str) -> InlineKeyboardMarkup:
+def get_agent_creation_confirm_keyboard(temp_agent_id: str, user_lang: str = "en") -> InlineKeyboardMarkup:
+    is_fr = (user_lang == "fr")
+    btn_confirm = "✅ Confirmer & Activer l'Agent" if is_fr else "✅ Confirm & Enable Agent"
+    btn_cancel = "❌ Annuler / Refuser" if is_fr else "❌ Cancel / Reject"
     rows = [
         [
-            InlineKeyboardButton("✅ Confirmer & Activer l'Agent", callback_data=f"agent_confirm_create:{temp_agent_id}"),
-            InlineKeyboardButton("❌ Annuler / Refuser", callback_data=f"agent_cancel_create:{temp_agent_id}"),
+            InlineKeyboardButton(btn_confirm, callback_data=f"agent_confirm_create:{temp_agent_id}"),
+            InlineKeyboardButton(btn_cancel, callback_data=f"agent_cancel_create:{temp_agent_id}"),
         ]
     ]
     return InlineKeyboardMarkup(rows)
 
 
-def get_experts_keyboard(experts: Dict[str, Dict[str, Any]]) -> InlineKeyboardMarkup:
+def get_experts_keyboard(experts: Dict[str, Dict[str, Any]], user_lang: str = "en") -> InlineKeyboardMarkup:
+    is_fr = (user_lang == "fr")
     rows = []
     for name, exp in experts.items():
         disp = exp.get("display_name", name)
@@ -883,25 +968,36 @@ def get_experts_keyboard(experts: Dict[str, Dict[str, Any]]) -> InlineKeyboardMa
         rows.append([
             InlineKeyboardButton(f"{disp} — {status_icon}", callback_data=f"expert_view:{name}")
         ])
+    btn_refresh = "🔄 Rafraîchir" if is_fr else "🔄 Refresh"
+    btn_back = "⬅️ Centre de Contrôle" if is_fr else "⬅️ Control Center"
     rows.append([
-        InlineKeyboardButton("🔄 Rafraîchir", callback_data="cmd_experts"),
-        InlineKeyboardButton("⬅️ Centre de Contrôle", callback_data="menu_main"),
+        InlineKeyboardButton(btn_refresh, callback_data="cmd_experts"),
+        InlineKeyboardButton(btn_back, callback_data="menu_main"),
     ])
     return InlineKeyboardMarkup(rows)
 
 
-def get_expert_detail_keyboard(name: str, expert: Dict[str, Any]) -> InlineKeyboardMarkup:
+def get_expert_detail_keyboard(name: str, expert: Dict[str, Any], user_lang: str = "en") -> InlineKeyboardMarkup:
     is_en = expert.get("enabled", True)
-    toggle_text = "❌ Désactiver cet expert" if is_en else "✅ Activer cet expert"
+    is_fr = (user_lang == "fr")
+    if is_fr:
+        toggle_text = "❌ Désactiver cet expert" if is_en else "✅ Activer cet expert"
+        btn_delete = "🗑️ Supprimer cet expert"
+        btn_back = "⬅️ Retour à l'équipe d'experts"
+    else:
+        toggle_text = "❌ Disable this expert" if is_en else "✅ Enable this expert"
+        btn_delete = "🗑️ Delete this expert"
+        btn_back = "⬅️ Back to expert team"
     rows = [
         [InlineKeyboardButton(toggle_text, callback_data=f"expert_toggle:{name}")],
-        [InlineKeyboardButton("🗑️ Supprimer cet expert", callback_data=f"expert_delete:{name}")],
-        [InlineKeyboardButton("⬅️ Retour à l'équipe d'experts", callback_data="cmd_experts")],
+        [InlineKeyboardButton(btn_delete, callback_data=f"expert_delete:{name}")],
+        [InlineKeyboardButton(btn_back, callback_data="cmd_experts")],
     ]
     return InlineKeyboardMarkup(rows)
 
 
-def get_mcp_keyboard(servers: List[Dict[str, str]]) -> InlineKeyboardMarkup:
+def get_mcp_keyboard(servers: List[Dict[str, str]], user_lang: str = "en") -> InlineKeyboardMarkup:
+    is_fr = (user_lang == "fr")
     rows = []
     for srv in servers[:15]:
         name = srv["name"]
@@ -910,43 +1006,63 @@ def get_mcp_keyboard(servers: List[Dict[str, str]]) -> InlineKeyboardMarkup:
         is_en = (st == "enabled")
         icon = "🟢" if is_en else "🔴"
         action = "disable" if is_en else "enable"
+        if is_fr:
+            action_label = "Désactiver" if is_en else "Activer"
+            label = f"{icon} {name} ({stype}) — Cliquer pour {action_label}"
+        else:
+            action_label = "Disable" if is_en else "Enable"
+            label = f"{icon} {name} ({stype}) — Click to {action_label}"
         rows.append([
-            InlineKeyboardButton(
-                f"{icon} {name} ({stype}) — Cliquer pour {'Désactiver' if is_en else 'Activer'}",
-                callback_data=f"mcp_toggle:{action}:{name}",
-            )
+            InlineKeyboardButton(label, callback_data=f"mcp_toggle:{action}:{name}")
         ])
 
-    rows.append([
-        InlineKeyboardButton("⚡ Pack MCP Recommandés (Playwright, Firecrawl, Docker...)", callback_data="mcp_catalog")
-    ])
-    rows.append([
-        InlineKeyboardButton("➕ Ajouter Serveur MCP", callback_data="mcp_add_prompt"),
-        InlineKeyboardButton("🔄 Actualiser", callback_data="menu_mcp"),
-    ])
-    rows.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+    if is_fr:
+        rows.append([
+            InlineKeyboardButton("⚡ Pack MCP Recommandés (Playwright, Firecrawl, Docker...)", callback_data="mcp_catalog")
+        ])
+        rows.append([
+            InlineKeyboardButton("➕ Ajouter Serveur MCP", callback_data="mcp_add_prompt"),
+            InlineKeyboardButton("🔄 Actualiser", callback_data="menu_mcp"),
+        ])
+        rows.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+    else:
+        rows.append([
+            InlineKeyboardButton("⚡ Recommended MCP Pack (Playwright, Firecrawl, Docker...)", callback_data="mcp_catalog")
+        ])
+        rows.append([
+            InlineKeyboardButton("➕ Add MCP Server", callback_data="mcp_add_prompt"),
+            InlineKeyboardButton("🔄 Refresh", callback_data="menu_mcp"),
+        ])
+        rows.append([InlineKeyboardButton("⬅️ Back to Control Center", callback_data="menu_main")])
     return InlineKeyboardMarkup(rows)
 
 
-def get_mcp_catalog_keyboard(installed_names: List[str]) -> InlineKeyboardMarkup:
+def get_mcp_catalog_keyboard(installed_names: List[str], user_lang: str = "en") -> InlineKeyboardMarkup:
     import config
+    is_fr = (user_lang == "fr")
     rows = []
     for srv in config.RECOMMENDED_MCP_SERVERS:
         sid = srv["id"]
         is_inst = sid in installed_names
-        status_badge = "✅ Déjà installé" if is_inst else "➕ Installer en 1 clic"
+        if is_fr:
+            status_badge = "✅ Déjà installé" if is_inst else "➕ Installer en 1 clic"
+        else:
+            status_badge = "✅ Already Installed" if is_inst else "➕ 1-Click Install"
         rows.append([
             InlineKeyboardButton(
                 f"🔌 {srv['title'].split('(')[0].strip()} — {status_badge}",
                 callback_data=f"mcp_quick_install:{sid}",
             )
         ])
-    rows.append([InlineKeyboardButton("🚀 Tout installer (Pack Recommandé)", callback_data="mcp_quick_install:all_default")])
-    rows.append([InlineKeyboardButton("⬅️ Retour aux Serveurs MCP", callback_data="menu_mcp")])
+    btn_all = "🚀 Tout installer (Pack Recommandé)" if is_fr else "🚀 Install All (Recommended Pack)"
+    btn_back = "⬅️ Retour aux Serveurs MCP" if is_fr else "⬅️ Back to MCP Servers"
+    rows.append([InlineKeyboardButton(btn_all, callback_data="mcp_quick_install:all_default")])
+    rows.append([InlineKeyboardButton(btn_back, callback_data="menu_mcp")])
     return InlineKeyboardMarkup(rows)
 
 
-def get_plugins_keyboard(plugins: List[Dict[str, str]]) -> InlineKeyboardMarkup:
+def get_plugins_keyboard(plugins: List[Dict[str, str]], user_lang: str = "en") -> InlineKeyboardMarkup:
+    is_fr = (user_lang == "fr")
     rows = []
     for pl in plugins[:12]:
         name = pl["name"]
@@ -954,46 +1070,62 @@ def get_plugins_keyboard(plugins: List[Dict[str, str]]) -> InlineKeyboardMarkup:
         is_en = ("disable" not in st)
         icon = "🟢" if is_en else "🔴"
         action = "disable" if is_en else "enable"
+        status_lbl = ("Actif" if is_en else "Inactif") if is_fr else ("Active" if is_en else "Inactive")
         rows.append([
             InlineKeyboardButton(
-                f"{icon} {name} ({'Actif' if is_en else 'Inactif'})",
+                f"{icon} {name} ({status_lbl})",
                 callback_data=f"plugin_toggle:{action}:{name}",
             )
         ])
 
+    btn_import_gem = "📥 Importer (Gemini)" if is_fr else "📥 Import (Gemini)"
+    btn_import_cla = "📥 Importer (Claude)" if is_fr else "📥 Import (Claude)"
+    btn_add = "➕ Installer un Plugin" if is_fr else "➕ Install Plugin"
+    btn_refresh = "🔄 Actualiser" if is_fr else "🔄 Refresh"
+    btn_back = "⬅️ Retour au Centre de Contrôle" if is_fr else "⬅️ Back to Control Center"
+
     rows.append([
-        InlineKeyboardButton("📥 Importer (Gemini)", callback_data="plugin_import:gemini"),
-        InlineKeyboardButton("📥 Importer (Claude)", callback_data="plugin_import:claude"),
+        InlineKeyboardButton(btn_import_gem, callback_data="plugin_import:gemini"),
+        InlineKeyboardButton(btn_import_cla, callback_data="plugin_import:claude"),
     ])
     rows.append([
-        InlineKeyboardButton("➕ Installer un Plugin", callback_data="plugin_install_prompt"),
-        InlineKeyboardButton("🔄 Actualiser", callback_data="menu_plugins"),
+        InlineKeyboardButton(btn_add, callback_data="plugin_install_prompt"),
+        InlineKeyboardButton(btn_refresh, callback_data="menu_plugins"),
     ])
-    rows.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+    rows.append([InlineKeyboardButton(btn_back, callback_data="menu_main")])
     return InlineKeyboardMarkup(rows)
 
 
-def get_remote_control_keyboard(session_flag: bool) -> InlineKeyboardMarkup:
+def get_remote_control_keyboard(session_flag: bool, user_lang: str = "en") -> InlineKeyboardMarkup:
+    is_fr = (user_lang == "fr")
+    btn_start = "▶️ Démarrer Démon Remote" if is_fr else "▶️ Start Remote Daemon"
+    btn_stop = "⏹️ Arrêter Démon" if is_fr else "⏹️ Stop Daemon"
+    btn_flag = (
+        f"🔗 Flag Session --remote-control : {'ON ✅' if session_flag else 'OFF ❌'}"
+        if is_fr else
+        f"🔗 Session Flag --remote-control: {'ON ✅' if session_flag else 'OFF ❌'}"
+    )
+    btn_refresh = "🔄 Actualiser le Statut" if is_fr else "🔄 Refresh Status"
+    btn_back = "⬅️ Retour au Centre de Contrôle" if is_fr else "⬅️ Back to Control Center"
+
     rows = [
         [
-            InlineKeyboardButton("▶️ Démarrer Démon Remote", callback_data="rc_action:start"),
-            InlineKeyboardButton("⏹️ Arrêter Démon", callback_data="rc_action:stop"),
+            InlineKeyboardButton(btn_start, callback_data="rc_action:start"),
+            InlineKeyboardButton(btn_stop, callback_data="rc_action:stop"),
         ],
-        [
-            InlineKeyboardButton(
-                f"🔗 Flag Session --remote-control : {'ON ✅' if session_flag else 'OFF ❌'}",
-                callback_data="rc_action:toggle_flag",
-            )
-        ],
-        [InlineKeyboardButton("🔄 Actualiser le Statut", callback_data="menu_remote")],
-        [InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")],
+        [InlineKeyboardButton(btn_flag, callback_data="rc_action:toggle_flag")],
+        [InlineKeyboardButton(btn_refresh, callback_data="menu_remote")],
+        [InlineKeyboardButton(btn_back, callback_data="menu_main")],
     ]
     return InlineKeyboardMarkup(rows)
 
 
-def get_sessions_keyboard(conversations: List[Dict[str, Any]], active_id: Optional[str]) -> InlineKeyboardMarkup:
+def get_sessions_keyboard(conversations: List[Dict[str, Any]], active_id: Optional[str], user_lang: str = "en") -> InlineKeyboardMarkup:
+    is_fr = (user_lang == "fr")
+    btn_new = "🧹 Démarrer une Nouvelle Session Vierge" if is_fr else "🧹 Start Fresh Blank Session"
+    btn_back = "⬅️ Retour au Centre de Contrôle" if is_fr else "⬅️ Back to Control Center"
     rows = [
-        [InlineKeyboardButton("🧹 Démarrer une Nouvelle Session Vierge", callback_data="sess_new")]
+        [InlineKeyboardButton(btn_new, callback_data="sess_new")]
     ]
     for conv in conversations[:8]:
         cid = conv.get("id", "")
@@ -1006,42 +1138,67 @@ def get_sessions_keyboard(conversations: List[Dict[str, Any]], active_id: Option
                 callback_data=f"sess_load:{cid}",
             )
         ])
-    rows.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+    rows.append([InlineKeyboardButton(btn_back, callback_data="menu_main")])
     return InlineKeyboardMarkup(rows)
 
 
-def get_workspace_keyboard(settings: dict) -> InlineKeyboardMarkup:
+def get_workspace_keyboard(settings: dict, user_lang: str = "en") -> InlineKeyboardMarkup:
     extra = settings.get("extra_dirs", []) or []
+    is_fr = (user_lang == "fr")
+    btn_change = "📂 Changer le Dossier Workspace Principal" if is_fr else "📂 Change Primary Workspace Folder"
+    btn_add = "➕ Ajouter un Dossier Secondaire (--add-dir)" if is_fr else "➕ Add Secondary Directory (--add-dir)"
+    btn_clear = (
+        f"🗑️ Vider les Dossiers Secondaires ({len(extra)})"
+        if is_fr else
+        f"🗑️ Clear Secondary Directories ({len(extra)})"
+    )
+    btn_back = "⬅️ Retour au Centre de Contrôle" if is_fr else "⬅️ Back to Control Center"
+
     rows = [
-        [InlineKeyboardButton("📂 Changer le Dossier Workspace Principal", callback_data="ws_change_prompt")],
-        [InlineKeyboardButton("➕ Ajouter un Dossier Secondaire (--add-dir)", callback_data="ws_add_extra_prompt")],
+        [InlineKeyboardButton(btn_change, callback_data="ws_change_prompt")],
+        [InlineKeyboardButton(btn_add, callback_data="ws_add_extra_prompt")],
     ]
     if extra:
-        rows.append([InlineKeyboardButton(f"🗑️ Vider les Dossiers Secondaires ({len(extra)})", callback_data="ws_clear_extra")])
-    rows.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+        rows.append([InlineKeyboardButton(btn_clear, callback_data="ws_clear_extra")])
+    rows.append([InlineKeyboardButton(btn_back, callback_data="menu_main")])
     return InlineKeyboardMarkup(rows)
 
 
-def get_persona_keyboard(settings: dict) -> InlineKeyboardMarkup:
+def get_persona_keyboard(settings: dict, user_lang: str = "en") -> InlineKeyboardMarkup:
     has_instr = bool(settings.get("custom_instructions", "").strip())
+    is_fr = (user_lang == "fr")
+    btn_name = "🏷️ Changer le Nom de l'Agent" if is_fr else "🏷️ Change Agent Name"
+    btn_instr = "📝 Définir des Instructions Système Personnalisées" if is_fr else "📝 Set Custom System Instructions"
+    btn_clear = "🗑️ Effacer les Instructions Personnalisées" if is_fr else "🗑️ Clear Custom Instructions"
+    btn_back = "⬅️ Retour au Centre de Contrôle" if is_fr else "⬅️ Back to Control Center"
+
     rows = [
-        [InlineKeyboardButton("🏷️ Changer le Nom de l'Agent", callback_data="persona_name_prompt")],
-        [InlineKeyboardButton("📝 Définir des Instructions Système Personnalisées", callback_data="persona_instr_prompt")],
+        [InlineKeyboardButton(btn_name, callback_data="persona_name_prompt")],
+        [InlineKeyboardButton(btn_instr, callback_data="persona_instr_prompt")],
     ]
     if has_instr:
-        rows.append([InlineKeyboardButton("🗑️ Effacer les Instructions Personnalisées", callback_data="persona_clear_instr")])
-    rows.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
+        rows.append([InlineKeyboardButton(btn_clear, callback_data="persona_clear_instr")])
+    rows.append([InlineKeyboardButton(btn_back, callback_data="menu_main")])
     return InlineKeyboardMarkup(rows)
 
 
-def format_update_check_html(info: Dict[str, Any], is_push_alert: bool = False) -> str:
+def format_update_check_html(info: Dict[str, Any], is_push_alert: bool = False, user_lang: str = "en") -> str:
+    is_fr = (user_lang == "fr")
     if not info.get("ok"):
-        return (
-            "⚠️ <b>Vérification des mises à jour GitHub :</b>\n\n"
-            f"<code>{h(info.get('error', 'Erreur inconnue'))}</code>\n\n"
-            f"• <b>Version locale :</b> <code>v{h(info.get('local_version', '4.1.0'))}</code> (<code>{h(info.get('local_sha', ''))}</code>)\n"
-            f"• <b>Antigravity CLI :</b> <code>{h(info.get('installed_agy', ''))}</code> (requis >= <code>{h(info.get('required_agy', ''))}</code>)"
-        )
+        if is_fr:
+            return (
+                "⚠️ <b>Vérification des mises à jour GitHub :</b>\n\n"
+                f"<code>{h(info.get('error', 'Erreur inconnue'))}</code>\n\n"
+                f"• <b>Version locale :</b> <code>v{h(info.get('local_version', '4.1.0'))}</code> (<code>{h(info.get('local_sha', ''))}</code>)\n"
+                f"• <b>Antigravity CLI :</b> <code>{h(info.get('installed_agy', ''))}</code> (requis >= <code>{h(info.get('required_agy', ''))}</code>)"
+            )
+        else:
+            return (
+                "⚠️ <b>GitHub Update Check:</b>\n\n"
+                f"<code>{h(info.get('error', 'Unknown error'))}</code>\n\n"
+                f"• <b>Local version:</b> <code>v{h(info.get('local_version', '4.1.0'))}</code> (<code>{h(info.get('local_sha', ''))}</code>)\n"
+                f"• <b>Antigravity CLI:</b> <code>{h(info.get('installed_agy', ''))}</code> (required >= <code>{h(info.get('required_agy', ''))}</code>)"
+            )
 
     behind = int(info.get("commits_behind", 0))
     agy_needs = bool(info.get("agy_needs_update", False))
@@ -1049,170 +1206,114 @@ def format_update_check_html(info: Dict[str, Any], is_push_alert: bool = False) 
     remote_ver = info.get("remote_version", local_ver)
     local_sha = info.get("local_sha", "")
     remote_sha = info.get("remote_sha", "")
-    inst_agy = info.get("installed_agy", "Inconnu")
+    inst_agy = info.get("installed_agy", "Inconnu" if is_fr else "Unknown")
     req_agy = info.get("required_agy", "1.3.0")
     changelog = info.get("changelog", "")
     commits = info.get("commits", []) or []
 
-    agy_badge = (
-        f"⚠️ Mise à jour requise (installé: <code>{h(inst_agy)}</code> ➔ requis: <code>&gt;= {h(req_agy)}</code>)"
-        if agy_needs
-        else f"✅ Compatible (<code>v{h(inst_agy)}</code> &gt;= <code>v{h(req_agy)}</code>)"
-    )
-
-    if behind == 0 and not agy_needs:
-        return (
-            "✅ <b>Votre système est 100% à jour !</b>\n\n"
-            f"• 🤖 <b>Version du Bot :</b> <code>v{h(local_ver)}</code> (commit <code>{h(local_sha)}</code>)\n"
-            f"• ⚡ <b>Antigravity CLI :</b> {agy_badge}\n"
-            "• 🛡️ <b>Surveillance GitHub :</b> Active en arrière-plan"
+    if is_fr:
+        agy_badge = (
+            f"⚠️ Mise à jour requise (installé: <code>{h(inst_agy)}</code> ➔ requis: <code>&gt;= {h(req_agy)}</code>)"
+            if agy_needs
+            else f"✅ Compatible (<code>v{h(inst_agy)}</code> &gt;= <code>v{h(req_agy)}</code>)"
         )
+        if behind == 0 and not agy_needs:
+            return (
+                "✅ <b>Votre système est 100% à jour !</b>\n\n"
+                f"• 🤖 <b>Version du Bot :</b> <code>v{h(local_ver)}</code> (commit <code>{h(local_sha)}</code>)\n"
+                f"• ⚡ <b>Antigravity CLI :</b> {agy_badge}\n"
+                "• 🛡️ <b>Surveillance GitHub :</b> Active en arrière-plan"
+            )
+        title = "🚨 <b>Nouvelle Mise à Jour GitHub Détectée !</b>" if is_push_alert else "🚀 <b>Mise à Jour Disponible !</b>"
+        lines = [
+            f"{title}\n",
+            f"• 📦 <b>Version :</b> <code>v{h(local_ver)}</code> (<code>{h(local_sha)}</code>) ➔ <b><code>v{h(remote_ver)}</code></b> (<code>{h(remote_sha)}</code>)",
+            f"• ⚡ <b>Antigravity CLI :</b> {agy_badge}",
+        ]
+        if changelog:
+            lines.append(f"• 📝 <b>Notes de version :</b> <i>{h(changelog)}</i>")
+        if commits:
+            lines.append(f"\n<b>📋 Nouveaux commits sur GitHub ({behind}) :</b>")
+            for c in commits[:6]:
+                lines.append(f"  ◦ <code>{h(c[:80])}</code>")
+        lines.append(
+            "\n🛡️ <i>Vos données personnelles (<code>.env</code>, <code>memory.db</code>, discussions, skills et préférences) "
+            "seront intégralement sauvegardées et conservées, et le bot redémarrera tout seul sans coupure.</i>\n"
+            "\n<b>Voulez-vous mettre à jour le système maintenant ?</b>"
+        )
+        return "\n".join(lines)
+    else:
+        agy_badge = (
+            f"⚠️ Update required (installed: <code>{h(inst_agy)}</code> ➔ required: <code>&gt;= {h(req_agy)}</code>)"
+            if agy_needs
+            else f"✅ Compatible (<code>v{h(inst_agy)}</code> &gt;= <code>v{h(req_agy)}</code>)"
+        )
+        if behind == 0 and not agy_needs:
+            return (
+                "✅ <b>Your system is 100% up to date!</b>\n\n"
+                f"• 🤖 <b>Bot Version:</b> <code>v{h(local_ver)}</code> (commit <code>{h(local_sha)}</code>)\n"
+                f"• ⚡ <b>Antigravity CLI:</b> {agy_badge}\n"
+                "• 🛡️ <b>GitHub Watcher:</b> Active in background"
+            )
+        title = "🚨 <b>New GitHub Update Detected!</b>" if is_push_alert else "🚀 <b>Update Available!</b>"
+        lines = [
+            f"{title}\n",
+            f"• 📦 <b>Version:</b> <code>v{h(local_ver)}</code> (<code>{h(local_sha)}</code>) ➔ <b><code>v{h(remote_ver)}</code></b> (<code>{h(remote_sha)}</code>)",
+            f"• ⚡ <b>Antigravity CLI:</b> {agy_badge}",
+        ]
+        if changelog:
+            lines.append(f"• 📝 <b>Release notes:</b> <i>{h(changelog)}</i>")
+        if commits:
+            lines.append(f"\n<b>📋 New commits on GitHub ({behind}):</b>")
+            for c in commits[:6]:
+                lines.append(f"  ◦ <code>{h(c[:80])}</code>")
+        lines.append(
+            "\n🛡️ <i>Your personal data (<code>.env</code>, <code>memory.db</code>, chats, skills and preferences) "
+            "will be fully preserved, and the bot will restart automatically with zero downtime.</i>\n"
+            "\n<b>Would you like to update the system now?</b>"
+        )
+        return "\n".join(lines)
 
-    title = (
-        "🚨 <b>Nouvelle Mise à Jour GitHub Détectée !</b>"
-        if is_push_alert
-        else "🚀 <b>Mise à Jour Disponible !</b>"
-    )
-    lines = [
-        f"{title}\n",
-        f"• 📦 <b>Version :</b> <code>v{h(local_ver)}</code> (<code>{h(local_sha)}</code>) ➔ <b><code>v{h(remote_ver)}</code></b> (<code>{h(remote_sha)}</code>)",
-        f"• ⚡ <b>Antigravity CLI :</b> {agy_badge}",
-    ]
-    if changelog:
-        lines.append(f"• 📝 <b>Notes de version :</b> <i>{h(changelog)}</i>")
 
-    if commits:
-        lines.append(f"\n<b>📋 Nouveaux commits sur GitHub ({behind}) :</b>")
-        for c in commits[:6]:
-            lines.append(f"  ◦ <code>{h(c[:80])}</code>")
-
-    lines.append(
-        "\n🛡️ <i>Vos données personnelles (<code>.env</code>, <code>memory.db</code>, discussions, skills et préférences) "
-        "seront intégralement sauvegardées et conservées, et le bot redémarrera tout seul sans coupure.</i>\n"
-        "\n<b>Voulez-vous mettre à jour le système maintenant ?</b>"
-    )
-    return "\n".join(lines)
-
-
-def get_update_prompt_keyboard(info: Dict[str, Any]) -> InlineKeyboardMarkup:
+def get_update_prompt_keyboard(info: Dict[str, Any], user_lang: str = "en") -> InlineKeyboardMarkup:
+    is_fr = (user_lang == "fr")
     rows = []
     if info.get("update_available"):
         remote_sha_full = info.get("remote_sha_full", "")[:12]
-        rows.append([
-            InlineKeyboardButton("✅ Oui, mettre à jour maintenant", callback_data="sys_update:confirm")
-        ])
+        btn_yes = "✅ Oui, mettre à jour maintenant" if is_fr else "✅ Yes, update now"
+        btn_diff = "📂 Voir les fichiers modifiés" if is_fr else "📂 View modified files"
+        btn_dismiss = "⏳ Ignorer cette version" if is_fr else "⏳ Ignore this version"
+        btn_later = "⏳ Plus tard" if is_fr else "⏳ Later"
+
+        rows.append([InlineKeyboardButton(btn_yes, callback_data="sys_update:confirm")])
         if info.get("changed_files"):
             rows.append([
-                InlineKeyboardButton("📂 Voir les fichiers modifiés", callback_data="sys_update:files"),
-                InlineKeyboardButton("⏳ Ignorer cette version", callback_data=f"sys_update:dismiss:{remote_sha_full}"),
+                InlineKeyboardButton(btn_diff, callback_data="sys_update:files"),
+                InlineKeyboardButton(btn_dismiss, callback_data=f"sys_update:dismiss:{remote_sha_full}"),
             ])
         else:
-            rows.append([
-                InlineKeyboardButton("⏳ Plus tard", callback_data=f"sys_update:dismiss:{remote_sha_full}")
-            ])
+            rows.append([InlineKeyboardButton(btn_later, callback_data=f"sys_update:dismiss:{remote_sha_full}")])
     else:
+        btn_recheck = "🔄 Revérifier sur GitHub" if is_fr else "🔄 Re-check GitHub"
+        btn_force = "⬆️ Forcer Maj CLI (agy update)" if is_fr else "⬆️ Force CLI Update (agy update)"
         rows.append([
-            InlineKeyboardButton("🔄 Revérifier sur GitHub", callback_data="sys_update:check"),
-            InlineKeyboardButton("⬆️ Forcer Maj CLI (agy update)", callback_data="cli_update"),
+            InlineKeyboardButton(btn_recheck, callback_data="sys_update:check"),
+            InlineKeyboardButton(btn_force, callback_data="cli_update"),
         ])
-    rows.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
-    return InlineKeyboardMarkup(rows)
-
-
-def get_groups_dashboard_keyboard(groups: Dict[str, Any]) -> InlineKeyboardMarkup:
-    rows = []
-    for s_id, g in groups.items():
-        title = g.get("title", f"Groupe {s_id}")[:20]
-        mode = g.get("mode", "passive")
-        mode_icon = "🔇" if mode == "passive" else ("💬" if mode == "active" else "⛔")
-        auth_icon = "✅" if g.get("is_authorized") else "⏳"
-        status = g.get("status", "active")
-        status_suffix = " (quitté)" if status == "left" else ""
-        btn_text = f"{auth_icon} {mode_icon} {title}{status_suffix}"
-        rows.append([InlineKeyboardButton(btn_text, callback_data=f"grp:view:{s_id}")])
-
-    rows.append([
-        InlineKeyboardButton("🔄 Actualiser", callback_data="menu_groups"),
-        InlineKeyboardButton("⬅️ Paramètres", callback_data="menu_main"),
-    ])
-    rows.append([InlineKeyboardButton("❌ Fermer", callback_data="close_menu")])
-    return InlineKeyboardMarkup(rows)
-
-
-def get_group_detail_keyboard(chat_id: int, g: Dict[str, Any]) -> InlineKeyboardMarkup:
-    s_id = str(chat_id)
-    mode = g.get("mode", "passive")
-    is_auth = g.get("is_authorized", False)
-    can_read = g.get("can_read", True)
-    can_write = g.get("can_write", False)
-    status = g.get("status", "active")
-    msg_count = len(g.get("recent_messages", []))
-
-    rows = []
-    # Authorization toggle
-    if not is_auth:
-        rows.append([InlineKeyboardButton("✅ Autoriser ce Groupe", callback_data=f"grp:auth:{s_id}:1")])
-    else:
-        rows.append([InlineKeyboardButton("⛔ Révoquer / Bloquer", callback_data=f"grp:auth:{s_id}:0")])
-
-    # Mode toggle
-    if mode == "passive":
-        rows.append([InlineKeyboardButton("💬 Passer en Mode Interactif (@mentions)", callback_data=f"grp:mode:{s_id}:active")])
-    elif mode == "active":
-        rows.append([InlineKeyboardButton("🔇 Passer en Mode Écoute Seule (Silencieux)", callback_data=f"grp:mode:{s_id}:passive")])
-    else:
-        rows.append([InlineKeyboardButton("🔇 Réactiver en Écoute Seule", callback_data=f"grp:mode:{s_id}:passive")])
-
-    # Read / Write Permissions toggles
-    read_label = "👁️ Lecture : ACTIVÉE ✅" if can_read else "👁️ Lecture : DÉSACTIVÉE ❌"
-    write_label = "✍️ Écriture : AUTORISÉE ✅" if can_write else "✍️ Écriture : BLOQUÉE ⛔"
-    rows.append([
-        InlineKeyboardButton(read_label, callback_data=f"grp:perm:{s_id}:can_read"),
-        InlineKeyboardButton(write_label, callback_data=f"grp:perm:{s_id}:can_write"),
-    ])
-
-    # Custom Mission for Agent in this group
-    rows.append([InlineKeyboardButton("🎯 Définir une Mission pour ce Groupe", callback_data=f"grp:mission:{s_id}")])
-
-    # Recent Messages buffer inspection
-    if msg_count > 0:
-        rows.append([InlineKeyboardButton(f"📜 Voir les Derniers Messages ({msg_count})", callback_data=f"grp:history:{s_id}")])
-
-    # Leave group action
-    if status != "left":
-        rows.append([InlineKeyboardButton("🚪 Faire Quitter le Bot du Groupe", callback_data=f"grp:leave:{s_id}")])
-    else:
-        rows.append([InlineKeyboardButton("🗑️ Supprimer de la liste", callback_data=f"grp:del:{s_id}")])
-
-    rows.append([InlineKeyboardButton("⬅️ Retour aux Groupes", callback_data="menu_groups")])
-    return InlineKeyboardMarkup(rows)
-
-
-def get_new_group_alert_keyboard(chat_id: int) -> InlineKeyboardMarkup:
-    s_id = str(chat_id)
-    rows = [
-        [
-            InlineKeyboardButton("🔇 Écoute Seule (100% Silencieux)", callback_data=f"grp:quick:{s_id}:passive"),
-        ],
-        [
-            InlineKeyboardButton("💬 Interactif (Répondre aux @mentions)", callback_data=f"grp:quick:{s_id}:active"),
-        ],
-        [
-            InlineKeyboardButton("⛔ Ignorer / Bloquer", callback_data=f"grp:quick:{s_id}:disabled"),
-            InlineKeyboardButton("🚪 Quitter Immédiatement", callback_data=f"grp:quick:{s_id}:leave"),
-        ],
-    ]
+    btn_back = "⬅️ Retour au Centre de Contrôle" if is_fr else "⬅️ Back to Control Center"
+    rows.append([InlineKeyboardButton(btn_back, callback_data="menu_main")])
     return InlineKeyboardMarkup(rows)
 
 
 def get_language_selection_keyboard(current_lang: str = "en") -> InlineKeyboardMarkup:
     check_en = " ✅" if current_lang == "en" else ""
     check_fr = " ✅" if current_lang == "fr" else ""
+    btn_back = "⬅️ Retour au Centre de Contrôle" if current_lang == "fr" else "⬅️ Back to Control Center"
     rows = [
         [
             InlineKeyboardButton(f"🇬🇧 English (Default){check_en}", callback_data="set_lang:en"),
             InlineKeyboardButton(f"🇫🇷 Français{check_fr}", callback_data="set_lang:fr"),
         ],
-        [InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")],
+        [InlineKeyboardButton(btn_back, callback_data="menu_main")],
     ]
     return InlineKeyboardMarkup(rows)
