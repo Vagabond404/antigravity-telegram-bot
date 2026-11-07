@@ -33,7 +33,7 @@ from config import (
 from memory_manager import get_relevant_context, auto_extract_and_store_facts
 from resource_governor import governor
 from agent_registry import agent_registry
-from agy_session import agy_session, session_pool, is_quota_error
+from agy_session import agy_session, session_pool, is_quota_error, is_connection_error
 from i18n import t
 
 logger = logging.getLogger("agent_runner")
@@ -648,6 +648,28 @@ class AgentRunner:
 
                 if "Execution stopped by user" in response_text or "interrompue par l'utilisateur" in response_text or not self._is_running_prompt:
                     return (response_text, False)
+
+                # Automatic recovery for transient connection / stream idle timeouts
+                if not is_quota and is_connection_error(response_text):
+                    logger.warning(
+                        f"Detected stream idle timeout or connection drop: '{response_text[:80]}'. "
+                        "Recycling session and automatically retrying turn on fresh connection..."
+                    )
+                    await target_session.abort()
+                    await target_session.ensure_warm_process(current_settings)
+                    response_text, is_success, is_quota = await target_session.execute_turn(
+                        prompt=enhanced_prompt,
+                        settings=current_settings,
+                        on_update=on_update,
+                        on_tool_call=on_tool_call,
+                        on_tool_result=on_tool_result,
+                        timeout=timeout,
+                    )
+                    if is_success:
+                        if user_id:
+                            total_tok = target_session.last_usage.get("total_tokens", 0)
+                            auth_mgr.record_turn_usage(user_id, total_tok)
+                        return (response_text, True)
 
                 if is_quota:
                     logger.warning(f"Quota reached on '{current_model}'. Switching to next fallback candidate...")

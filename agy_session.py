@@ -62,6 +62,29 @@ def is_quota_error(error_msg: str) -> bool:
     return any(k in lower for k in QUOTA_ERROR_KEYWORDS)
 
 
+CONNECTION_ERROR_KEYWORDS = [
+    "stream idle timeout",
+    "context deadline exceeded",
+    "connection reset",
+    "broken pipe",
+    "connection refused",
+    "network is unreachable",
+    "transport error",
+    "http2",
+    "deadline_exceeded",
+    "socket closed",
+    "eof",
+    "api error (attempt",
+]
+
+
+def is_connection_error(error_msg: str) -> bool:
+    if not error_msg:
+        return False
+    lower = str(error_msg).lower()
+    return any(k in lower for k in CONNECTION_ERROR_KEYWORDS)
+
+
 def _build_agy_env(extra_env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     """Build environment variables for `agy` subprocesses across CLI and systemd."""
     env = {
@@ -594,6 +617,11 @@ class AgySession:
                                     # Clear active conversation id on quota failure so fallback model doesn't inherit a corrupted trajectory
                                     self._active_conversation_id = None
                                     return (err, False, True)
+                                if is_connection_error(err):
+                                    logger.warning(f"Connection dropped / stream idle timeout detected: {err}. Stopping stale process...")
+                                    await self._stop_process()
+                                    self._has_active_session = False
+                                    return (err, False, False)
                                 return (f"Erreur Antigravity : {err}", False, False)
 
                         elif evt_type == "raw_output":
@@ -622,6 +650,11 @@ class AgySession:
                 if is_quota_error(err_msg):
                     self._active_conversation_id = None
                     return (err_msg, False, True)
+                if is_connection_error(err_msg):
+                    logger.warning(f"Connection dropped in stderr: {err_msg}. Stopping stale process...")
+                    await self._stop_process()
+                    self._has_active_session = False
+                    return (err_msg, False, False)
                 return (f"⚠️ CLI Error: {err_msg}", False, False)
 
             except Exception as e:
