@@ -18,6 +18,7 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     filters,
     ContextTypes,
 )
@@ -91,7 +92,7 @@ class MultiBotManager:
 
             try:
                 logger.info(f"Building secondary Telegram Bot @{bot_username} for user {user_id}...")
-                app = ApplicationBuilder().token(token.strip()).build()
+                app = ApplicationBuilder().token(token.strip()).concurrent_updates(True).build()
 
                 # Register handlers for the secondary bot
                 self._register_secondary_handlers(app, user_id, token.strip(), cb)
@@ -255,8 +256,54 @@ class MultiBotManager:
                 bot_token=bot_token,
             )
 
+        async def _sec_abort(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            if not await _check_access(update):
+                return
+            user_lang = get_user_language(owner_id)
+            is_fr = (user_lang == "fr")
+            try:
+                from agy_session import session_pool
+                session_key = f"user_{owner_id}"
+                sess = session_pool._sessions.get(session_key)
+                if sess:
+                    await sess.abort()
+                from agent_runner import runner
+                await runner.abort()
+                ack = "🛑 <b>Tâche interrompue immédiatement.</b>" if is_fr else "🛑 <b>Task stopped immediately.</b>"
+            except Exception as e:
+                logger.warning(f"Secondary bot abort error: {e}")
+                ack = "🛑 <b>Arrêt forcé exécuté.</b>" if is_fr else "🛑 <b>Force abort executed.</b>"
+            if update.message:
+                await update.message.reply_text(ack, parse_mode=constants.ParseMode.HTML)
+
+        async def _sec_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            query = update.callback_query
+            if not query:
+                return
+            data = query.data or ""
+            user_lang = get_user_language(owner_id)
+            if data == "abort_running" or data.startswith("abort_running:"):
+                try:
+                    from agy_session import session_pool
+                    session_key = f"user_{owner_id}"
+                    sess = session_pool._sessions.get(session_key)
+                    if sess:
+                        await sess.abort()
+                    from agent_runner import runner
+                    await runner.abort()
+                except Exception:
+                    pass
+                await query.answer("🛑 Arrêté !" if user_lang == "fr" else "🛑 Stopped!", show_alert=False)
+                try:
+                    if query.message:
+                        await query.message.edit_reply_markup(reply_markup=None)
+                except Exception:
+                    pass
+
         app.add_handler(CommandHandler("start", _sec_start))
         app.add_handler(CommandHandler("help", _sec_start))
+        app.add_handler(CommandHandler("abort", _sec_abort))
+        app.add_handler(CallbackQueryHandler(_sec_callback))
         app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL | filters.VOICE | filters.AUDIO | filters.VIDEO, _sec_media))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _sec_prompt))
 

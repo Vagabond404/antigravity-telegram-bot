@@ -431,7 +431,11 @@ class AgentRunner:
 
     @property
     def is_running(self) -> bool:
-        return self._is_running_prompt or agy_session.is_running
+        return (
+            self._is_running_prompt
+            or agy_session.is_running
+            or any(s.is_running for s in getattr(session_pool, "_sessions", {}).values())
+        )
 
     @property
     def active_conversation_id(self) -> Optional[str]:
@@ -462,7 +466,12 @@ class AgentRunner:
 
     async def abort(self) -> bool:
         self._is_running_prompt = False
-        return await agy_session.abort()
+        res = await agy_session.abort()
+        try:
+            await session_pool.abort_all()
+        except Exception:
+            pass
+        return res
 
     async def warm_up(self, settings: dict) -> bool:
         """Proactively spin up the persistent warm agy session in background."""

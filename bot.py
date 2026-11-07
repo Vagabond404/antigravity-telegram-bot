@@ -1900,19 +1900,13 @@ async def cmd_abort(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
 
-    # Stop user warm session if running
-    u_ws = auth_mgr.get_user_workspace(uid)
-    pool_session = session_pool.get_session(str(uid), u_ws)
-    if pool_session and pool_session.is_running:
-        aborted_anything = True
-        try:
-            await pool_session.stop()
-        except Exception:
-            pass
-
-    if is_admin(uid, user) and runner.is_running:
-        aborted_anything = True
+    # Stop all running sessions and prompt tasks
+    try:
         await runner.abort()
+        await session_pool.abort_all()
+        aborted_anything = True
+    except Exception as ex:
+        logger.warning(f"Error aborting sessions in cmd_abort: {ex}")
 
     if aborted_anything:
         ack = "🛑 <b>Tâche interrompue immédiatement.</b>" if is_fr else "🛑 <b>Task stopped immediately.</b>"
@@ -2029,47 +2023,53 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 logger.warning(f"Could not notify admin of access request: {ex}")
         return
 
-    if not is_admin(uid, query.from_user):
-        user_lang = get_user_language(uid)
-        await query.answer("⛔ Réservé à l'administrateur." if user_lang == "fr" else "⛔ Admin only.", show_alert=True)
-        return
-
     if data == "abort_running" or data.startswith("abort_running:"):
         chat_id = update.effective_chat.id if update.effective_chat else uid
+        if ":" in data:
+            try:
+                chat_id = int(data.split(":")[1])
+            except Exception:
+                pass
         turn_info = _active_chat_turns.get(chat_id)
         _queued_abort_chats.add(chat_id)
         user_lang = get_user_language(uid)
 
-        if turn_info or runner.is_running:
-            if turn_info:
-                turn_info["aborted"] = True
-                live_msg = turn_info.get("live_msg")
-                if live_msg:
-                    try:
-                        abort_notice = "🛑 <b>Tâche interrompue par l'utilisateur.</b>" if user_lang == "fr" else "🛑 <b>Task interrupted by user.</b>"
-                        await safe_edit_message(
-                            live_msg,
-                            abort_notice,
-                            reply_markup=None,
-                        )
-                    except Exception:
-                        pass
+        aborted = False
+        if turn_info:
+            aborted = True
+            turn_info["aborted"] = True
+            live_msg = turn_info.get("live_msg")
+            if live_msg:
+                try:
+                    abort_notice = "🛑 <b>Tâche interrompue par l'utilisateur.</b>" if user_lang == "fr" else "🛑 <b>Task interrupted by user.</b>"
+                    await safe_edit_message(
+                        live_msg,
+                        abort_notice,
+                        reply_markup=None,
+                    )
+                except Exception:
+                    pass
+
+        try:
             await runner.abort()
-            await query.answer("🛑 Exécution interrompue !" if user_lang == "fr" else "🛑 Execution stopped!", show_alert=False)
-            try:
-                if query.message and "file d'attente" in (query.message.text or ""):
-                    await query.message.delete()
-                elif query.message:
-                    await query.message.edit_reply_markup(reply_markup=None)
-            except Exception:
-                pass
-        else:
-            await query.answer("ℹ️ Déjà terminé." if user_lang == "fr" else "ℹ️ Already finished.", show_alert=False)
-            try:
-                if query.message:
-                    await query.message.edit_reply_markup(reply_markup=None)
-            except Exception:
-                pass
+            await session_pool.abort_all()
+            aborted = True
+        except Exception as ex:
+            logger.warning(f"Error aborting in callback: {ex}")
+
+        await query.answer("🛑 Exécution interrompue !" if user_lang == "fr" else "🛑 Execution stopped!", show_alert=False)
+        try:
+            if query.message and ("file d'attente" in (query.message.text or "") or "queued" in (query.message.text or "").lower()):
+                await query.message.delete()
+            elif query.message:
+                await query.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        return
+
+    if not is_admin(uid, query.from_user):
+        user_lang = get_user_language(uid)
+        await query.answer("⛔ Réservé à l'administrateur." if user_lang == "fr" else "⛔ Admin only.", show_alert=True)
         return
 
     if data == "close_menu":
@@ -3791,9 +3791,12 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         user_lang = get_user_language(uid)
         is_fr = (user_lang == "fr")
         if runner.is_running:
-            warn_run = "⚠️ Une tâche IA est en cours. Attendez sa fin ou tapez /abort." if is_fr else "⚠️ An AI task is currently running. Wait for it to finish or type /abort."
-            await query.answer(warn_run, show_alert=True)
-            return
+            # Force abort any running tasks to allow update to proceed cleanly
+            try:
+                await runner.abort()
+                await session_pool.abort_all()
+            except Exception as ex:
+                logger.warning(f"Could not cleanly abort tasks before update: {ex}")
         await query.answer("🚀 Lancement de la mise à jour automatique..." if is_fr else "🚀 Launching automatic update...")
 
         async def _progress(step_text: str):
@@ -5610,6 +5613,7 @@ def main():
     app = (
         ApplicationBuilder()
         .token(token)
+        .concurrent_updates(True)
         .request(t_request)
         .post_init(post_init)
         .build()

@@ -365,6 +365,10 @@ class AgySession:
     async def abort(self) -> bool:
         """Interrupt and abort current execution immediately."""
         self._is_aborted = True
+        try:
+            self._event_queue.put_nowait(None)
+        except Exception:
+            pass
         if not self._turn_in_progress and not self.is_alive:
             return False
         logger.warning("User requested turn abort. Stopping persistent agy session...")
@@ -412,6 +416,8 @@ class AgySession:
                 got_success = False
                 current_action = "🧠 Analyse en cours..."
                 pending_tools: Dict[str, Dict[str, Any]] = {}
+                active_tool_name: str = ""
+                active_tool_start_time: Optional[float] = None
                 t_start = asyncio.get_event_loop().time()
                 ui_last_rendered = ""
 
@@ -437,12 +443,32 @@ class AgySession:
 
                 try:
                     while True:
-                        remaining_time = timeout - (asyncio.get_event_loop().time() - t_start)
-                        if remaining_time <= 0 and timeout > 0:
-                            await self.abort()
-                            return (f"⏱️ Délai d'attente dépassé ({int(timeout)}s).", False, False)
+                        if self._is_aborted:
+                            return ("🛑 Execution stopped by user.", False, False)
 
-                        wait_sec = min(max(1.0, remaining_time), 30.0) if timeout > 0 else 30.0
+                        now = asyncio.get_event_loop().time()
+                        total_elapsed = now - t_start
+
+                        # Global timeout enforcement
+                        if timeout > 0 and total_elapsed >= timeout:
+                            await self.abort()
+                            return (f"⏱️ Turn execution timeout ({int(timeout)}s).", False, False)
+                        elif timeout <= 0 and total_elapsed >= 1800.0:
+                            # Hard safety ceiling even when timeout=0 (infinite) to prevent permanent hangs
+                            await self.abort()
+                            return ("⏱️ Safety execution timeout exceeded (1800s). Turn stopped.", False, False)
+
+                        # Check if any active tool has been hanging with zero progress
+                        if active_tool_start_time is not None:
+                            tool_elapsed = now - active_tool_start_time
+                            if tool_elapsed >= 180.0:
+                                logger.warning(f"Tool '{active_tool_name}' hanging for {tool_elapsed:.1f}s. Aborting turn...")
+                                await self.abort()
+                                return (f"⏱️ Tool execution timed out ({active_tool_name} > 180s without output). Turn aborted.", False, False)
+
+                        # Determine poll wait time: check frequently enough for tool inactivity watchdog
+                        remaining_time = (timeout - total_elapsed) if timeout > 0 else (1800.0 - total_elapsed)
+                        wait_sec = min(max(1.0, remaining_time), 5.0)
                         try:
                             event = await asyncio.wait_for(self._event_queue.get(), timeout=wait_sec)
                         except asyncio.TimeoutError:
@@ -481,6 +507,8 @@ class AgySession:
                                 if delta and not is_subagent:
                                     accumulated_text.append(delta)
                                     current_action = ""
+                                    active_tool_start_time = None
+                                    active_tool_name = ""
                                 elif thinking:
                                     current_action = f"{sub_prefix}🧠 Réflexion approfondie en cours..."
                                 elif state == "ACTIVE" and not accumulated_text:
@@ -495,6 +523,8 @@ class AgySession:
                                 if state == "ACTIVE":
                                     current_action = self._format_tool_action(tool_name, tool_args, sub_prefix)
                                     pending_tools[call_id] = {"name": tool_name, "args": tool_args}
+                                    active_tool_name = tool_name
+                                    active_tool_start_time = asyncio.get_event_loop().time()
                                     if on_tool_call:
                                         try:
                                             await on_tool_call(tool_name, tool_args, call_id)
@@ -508,6 +538,11 @@ class AgySession:
                                     tool_name = p_tool.get("name", tool_name)
                                     tool_args = p_tool.get("args", tool_args)
                                     current_action = ""
+                                    if not pending_tools:
+                                        active_tool_start_time = None
+                                        active_tool_name = ""
+                                    else:
+                                        active_tool_start_time = asyncio.get_event_loop().time()
                                     if on_tool_result:
                                         try:
                                             await on_tool_result(tool_name, tool_args, str(output)[:500], call_id, is_err)
