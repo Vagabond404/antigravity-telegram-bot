@@ -62,7 +62,7 @@ DEFAULT_ISOLATION: Dict[str, Any] = {
     "isolated_skills": False,
     "isolated_mcp": False,
     "workspace_dir": "",
-    "sandbox": True,
+    "sandbox": False,
 }
 
 DEFAULT_DEDICATED_BOT: Dict[str, Any] = {
@@ -366,7 +366,7 @@ class AuthManager:
             iso["isolated_subagents"] = True
             iso["isolated_skills"] = True
             iso["isolated_mcp"] = True
-            iso["sandbox"] = True
+            iso["sandbox"] = False
         else:  # shared
             iso["isolated_memory"] = False
             iso["isolated_workspace"] = False

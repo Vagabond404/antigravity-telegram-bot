@@ -632,8 +632,12 @@ class AgentRunner:
                     current_settings["chat_id"] = str(chat_id)
                 if bot_token:
                     current_settings["bot_token"] = str(bot_token)
-                if iso_cfg.get("sandbox", True):
-                    current_settings["sandbox"] = True
+                # Admins have full host terminal permissions; never sandbox admin unless explicitly toggled in /settings
+                is_admin_user = auth_mgr.is_admin(user_id) if user_id else True
+                if is_admin_user:
+                    current_settings["sandbox"] = bool(settings.get("sandbox", False))
+                else:
+                    current_settings["sandbox"] = bool(iso_cfg.get("sandbox", False))
 
                 response_text, is_success, is_quota = await target_session.execute_turn(
                     prompt=enhanced_prompt,
