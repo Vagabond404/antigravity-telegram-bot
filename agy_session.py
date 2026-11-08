@@ -472,25 +472,29 @@ class AgySession:
                         now = asyncio.get_event_loop().time()
                         total_elapsed = now - t_start
 
-                        # Global timeout enforcement
+                        # Global timeout enforcement (only if timeout > 0, 0 = infinite)
                         if timeout > 0 and total_elapsed >= timeout:
                             await self.abort()
                             return (f"⏱️ Turn execution timeout ({int(timeout)}s).", False, False)
-                        elif timeout <= 0 and total_elapsed >= 1800.0:
-                            # Hard safety ceiling even when timeout=0 (infinite) to prevent permanent hangs
-                            await self.abort()
-                            return ("⏱️ Safety execution timeout exceeded (1800s). Turn stopped.", False, False)
 
                         # Check if any active tool has been hanging with zero progress
                         if active_tool_start_time is not None:
                             tool_elapsed = now - active_tool_start_time
-                            if tool_elapsed >= 180.0:
-                                logger.warning(f"Tool '{active_tool_name}' hanging for {tool_elapsed:.1f}s. Aborting turn...")
+                            # Passive file reading tools watchdog
+                            if active_tool_name in ("read_file", "view_file"):
+                                file_limit = min(timeout, 300.0) if timeout > 0 else 600.0
+                                if tool_elapsed >= file_limit:
+                                    logger.warning(f"File reading tool '{active_tool_name}' hanging for {tool_elapsed:.1f}s. Aborting turn...")
+                                    await self.abort()
+                                    return (f"⏱️ File tool timed out ({active_tool_name} > {int(file_limit)}s). Turn aborted.", False, False)
+                            elif timeout > 0 and tool_elapsed >= timeout:
+                                # For computation/commands (run_command, etc.), respect the user's configured global timeout
+                                logger.warning(f"Tool '{active_tool_name}' exceeded configured turn timeout ({timeout}s). Aborting turn...")
                                 await self.abort()
-                                return (f"⏱️ Tool execution timed out ({active_tool_name} > 180s without output). Turn aborted.", False, False)
+                                return (f"⏱️ Tool execution timed out ({active_tool_name} > {int(timeout)}s). Turn aborted.", False, False)
 
-                        # Determine poll wait time: check frequently enough for tool inactivity watchdog
-                        remaining_time = (timeout - total_elapsed) if timeout > 0 else (1800.0 - total_elapsed)
+                        # Determine poll wait time
+                        remaining_time = (timeout - total_elapsed) if timeout > 0 else 5.0
                         wait_sec = min(max(1.0, remaining_time), 5.0)
                         try:
                             event = await asyncio.wait_for(self._event_queue.get(), timeout=wait_sec)
