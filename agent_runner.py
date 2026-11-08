@@ -156,6 +156,10 @@ COMMUNICATION & EXECUTION RULES:
 5. 🕹️ DYNAMIC TELEGRAM COMMANDS:
    - You can create or remove dynamic Telegram commands (`/command`) on demand:
      `"{py_exe}" "{cmd_script}" add <name> "<description>" "<template {{prompt}}>"`
+6. ⚡ EMBEDDED ARM HARDWARE PERFORMANCE (Armbian / TV-Box):
+   - NEVER run blind recursive search (`grep -rn`, `find /`) on directories containing `node_modules`, `.venv`, `.git`, or root `/`. It will freeze the hardware!
+   - ALWAYS exclude heavy dependency trees: `grep -rn --exclude-dir={{node_modules,.venv,.git,workspaces}} ...` or read target files directly.
+   - For commands producing large output, pipe to `head -n 50` to conserve memory and avoid I/O bottlenecks.
 """
 
     # Inject MCP servers section so the model always knows what MCP tools exist

@@ -480,18 +480,26 @@ class AgySession:
                         # Check if any active tool has been hanging with zero progress
                         if active_tool_start_time is not None:
                             tool_elapsed = now - active_tool_start_time
-                            # Passive file reading tools watchdog
+                            # Passive file reading tools watchdog (read_file, view_file)
                             if active_tool_name in ("read_file", "view_file"):
-                                file_limit = min(timeout, 300.0) if timeout > 0 else 600.0
+                                file_limit = min(timeout, 180.0) if timeout > 0 else 180.0
                                 if tool_elapsed >= file_limit:
                                     logger.warning(f"File reading tool '{active_tool_name}' hanging for {tool_elapsed:.1f}s. Aborting turn...")
                                     await self.abort()
                                     return (f"⏱️ File tool timed out ({active_tool_name} > {int(file_limit)}s). Turn aborted.", False, False)
-                            elif timeout > 0 and tool_elapsed >= timeout:
-                                # For computation/commands (run_command, etc.), respect the user's configured global timeout
-                                logger.warning(f"Tool '{active_tool_name}' exceeded configured turn timeout ({timeout}s). Aborting turn...")
-                                await self.abort()
-                                return (f"⏱️ Tool execution timed out ({active_tool_name} > {int(timeout)}s). Turn aborted.", False, False)
+                            else:
+                                # Active execution commands (run_command, etc.):
+                                # Sane ceiling of 600s (10 min) even in infinite mode to prevent runaway blind searches (e.g. grep on node_modules)
+                                cmd_limit = timeout if timeout > 0 else 600.0
+                                if tool_elapsed >= cmd_limit:
+                                    logger.warning(f"Command '{active_tool_name}' hanging for {tool_elapsed:.1f}s (> {cmd_limit}s). Aborting turn...")
+                                    await self.abort()
+                                    return (
+                                        f"⏱️ Tool execution timed out ({active_tool_name} > {int(cmd_limit)}s). "
+                                        "Command aborted to protect host system resources. Please use targeted paths instead of blind recursive scans.",
+                                        False,
+                                        False,
+                                    )
 
                         # Determine poll wait time
                         remaining_time = (timeout - total_elapsed) if timeout > 0 else 5.0
