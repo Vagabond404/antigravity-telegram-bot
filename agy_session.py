@@ -78,6 +78,12 @@ CONNECTION_ERROR_KEYWORDS = [
     "the stream was interrupted",
     "stream was interrupted",
     "stream interrupted",
+    "the connection to the agent was interrupted",
+    "connection to the agent was interrupted",
+    "conversation update stream lost",
+    "subscriber fell behind updates",
+    "stalled for",
+    "stream failed",
 ]
 
 
@@ -420,6 +426,11 @@ class AgySession:
             self._is_aborted = False
             self._stderr_buffer.clear()
             try:
+                from config import TURN_SENT_FILES_FILE
+                TURN_SENT_FILES_FILE.unlink(missing_ok=True)
+            except Exception:
+                pass
+            try:
                 ok = await self.ensure_warm_process(settings)
                 if not ok or not self.is_alive or not self._process or not self._process.stdin:
                     return ("❌ Impossible d'initialiser la session Antigravity CLI.", False, False)
@@ -632,6 +643,28 @@ class AgySession:
                                     # Clear active conversation id on quota failure so fallback model doesn't inherit a corrupted trajectory
                                     self._active_conversation_id = None
                                     return (err, False, True)
+
+                                # Check if deliverable files were already dispatched to Telegram during this turn
+                                has_sent_deliverables = False
+                                try:
+                                    from config import TURN_SENT_FILES_FILE
+                                    if TURN_SENT_FILES_FILE.exists():
+                                        sent_list = json.loads(TURN_SENT_FILES_FILE.read_text(encoding="utf-8"))
+                                        if sent_list:
+                                            has_sent_deliverables = True
+                                except Exception:
+                                    pass
+
+                                accumulated = "".join(accumulated_text).strip()
+                                if has_sent_deliverables or len(accumulated) > 120:
+                                    logger.warning(
+                                        f"Turn ended with stream warning/error ('{err[:80]}'), but deliverables were sent or {len(accumulated)} chars produced. "
+                                        "Recycling session and returning success."
+                                    )
+                                    await self._stop_process()
+                                    self._has_active_session = False
+                                    return (accumulated or "✅ Action completed with deliverable files sent.", True, False)
+
                                 if is_connection_error(err):
                                     logger.warning(f"Connection dropped / stream idle timeout detected: {err}. Stopping stale process...")
                                     await self._stop_process()

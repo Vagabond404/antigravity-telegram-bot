@@ -719,6 +719,13 @@ class AgentRunner:
                     )
                     return (auth_help, False)
 
+                if is_connection_error(response_text):
+                    conn_help = (
+                        "⚠️ <b>Flux d'exécution interrompu ou timeout.</b>\n\n"
+                        "La session Antigravity s'est interrompue avant la fin de la réponse. La session a été recyclée automatiquement."
+                    )
+                    return (conn_help, False)
+
                 return (response_text, False)
 
             return (
