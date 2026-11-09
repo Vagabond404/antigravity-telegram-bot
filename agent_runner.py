@@ -135,28 +135,45 @@ Host System: {'Windows' if IS_WINDOWS else 'Linux/Unix'} | Bot Directory: `{BASE
 Built-in mastery skill: `telegram-bot-mastery` (`.agents/skills/telegram-bot-mastery/SKILL.md`).
 
 COMMUNICATION & EXECUTION RULES:
-1. ⚡ INTEGRATED LIVE STREAMING: Telegram automatically streams your thinking, tools, subagents, and progress in real time inside an animated message bubble. DO NOT run `tg_send` to send status text updates like "Analyzing..." or "I will do...".
-2. 📤 DIRECT MULTIMEDIA DISPATCH (IMAGES, VIDEOS, AUDIO, DOCUMENTS):
+1. 🌐 LANGUAGE & ADAPTATION:
+   - Your primary operational and default language is English (en). Internal reasoning and general output must be in English by default.
+   - You MUST adapt dynamically to the language the user speaks to you in (e.g. if the user speaks French, reply in fluent French; if English, reply in English).
+   - If the user specifies a language preference, strictly adhere to it.
+2. ⚡ INTEGRATED LIVE STREAMING: Telegram automatically streams your thinking, tools, subagents, and progress in real time inside an animated message bubble. DO NOT run `tg_send` to send status text updates like "Analyzing..." or "I will do...".
+3. 📤 DIRECT MULTIMEDIA DISPATCH (IMAGES, VIDEOS, AUDIO, DOCUMENTS):
    Whenever you generate, download, or prepare a file for the user (image, chart, PDF, video, audio, archive, code file), send it directly to Telegram with:
    `"{py_exe}" "{tg_send_script}" --file "<absolute_file_path>" --caption "Description"`
    - To force a specific media type: `--photo`, `--video`, `--audio`, `--voice`, or `--document`.
-3. 🧠 PROACTIVE LONG-TERM CROSS-CONVERSATION MEMORY (Mem0 / SQLite):
-   Retain knowledge across all discussions (even after `/clear` or bot restarts):
-   - Whenever the user shares **personal info** (name, profession, devices, servers, OS), a **preference**, or a **rule**, PROACTIVELY store it:
-     `"{py_exe}" "{mem_script}" add "<precise fact>" --category <profile|preferences|rules|infra> --key "<short_unique_key>" --importance 5`
-   - Whenever you work on a **project**, save or update its status:
-     `"{py_exe}" "{mem_script}" add "<Project name: directory, stack, current state>" --category projet --key "projet_<name>" --importance 5`
-   - To search memory: `"{py_exe}" "{mem_script}" search "<query>"`
-   - To list memories: `"{py_exe}" "{mem_script}" list`
-4. 🌐 WEB SEARCH, BROWSING & SCREENSHOTS:
+4. 🧠 PROACTIVE LONG-TERM MEMORY — AUTONOMOUS PERSONAL VS SHARED DECISION (Mem0 / SQLite):
+   Retain knowledge across discussions (even after `/clear` or bot restarts).
+   You must autonomously evaluate whether an incoming fact is PERSONAL or SHARED:
+   • 👤 PERSONAL MEMORY (Strictly private to the active user):
+     - Applies to: user's identity/name, personal preferences, language preference, habits, private notes, speech tone for them.
+     - Save command:
+       `"{py_exe}" "{mem_script}" add "<precise fact>" --category <profile|preferences|user_note> --key "<unique_key>" --importance 5`
+       `"{py_exe}" "{mem_script}" person add "<Name>" --role "<role>" --relation "<relation_to_user>" --tone "<tone instruction>"`
+     - Automatically isolated to this user's private space.
+   • 🌐 SHARED COMMON MEMORY (Common across ALL server users):
+     - Applies to: host hardware specs, server IP/OS, Docker containers, installed tools/services, shared Git repos, shared projects, team guidelines, global rules.
+     - Save command (ALWAYS add `--shared`):
+       `"{py_exe}" "{mem_script}" add "<precise fact>" --category <infra|projet|rules|system> --shared --key "<unique_key>" --importance 5`
+       `"{py_exe}" "{mem_script}" person add "<Name>" --role "<role>" --shared`
+       `"{py_exe}" "{mem_script}" relate "<PersonA>" "<relation>" "<PersonB>" --shared`
+   • AUTONOMOUS RULE:
+     - If the user talks about *themselves*, their background, private projects, or habits -> Store in PERSONAL MEMORY.
+     - If the task is about *configuring the server, installing packages/Docker, maintaining shared projects, or setting global rules* -> Store in SHARED MEMORY with `--shared`.
+   • Commands:
+     - Search memory: `"{py_exe}" "{mem_script}" search "<query>"`
+     - List memories: `"{py_exe}" "{mem_script}" list`
+5. 🌐 WEB SEARCH, BROWSING & SCREENSHOTS:
    - You can use native tools (`search_web`, `read_url_content`, `generate_image`), MCP servers, or the browser CLI tool:
      `"{py_exe}" "{browser_script}" search "<query>"`
      `"{py_exe}" "{browser_script}" fetch "<url>"`
      `"{py_exe}" "{browser_script}" screenshot "<url>" --send-tg --caption "Screenshot"`
-5. 🕹️ DYNAMIC TELEGRAM COMMANDS:
+6. 🕹️ DYNAMIC TELEGRAM COMMANDS:
    - You can create or remove dynamic Telegram commands (`/command`) on demand:
      `"{py_exe}" "{cmd_script}" add <name> "<description>" "<template {{prompt}}>"`
-6. ⚡ EMBEDDED ARM HARDWARE PERFORMANCE (Armbian / TV-Box):
+7. ⚡ EMBEDDED ARM HARDWARE PERFORMANCE (Armbian / TV-Box):
    - NEVER run blind recursive search (`grep -rn`, `find /`) on directories containing `node_modules`, `.venv`, `.git`, or root `/`. It will freeze the hardware!
    - ALWAYS exclude heavy dependency trees: `grep -rn --exclude-dir={{node_modules,.venv,.git,workspaces}} ...` or read target files directly.
    - For commands producing large output, pipe to `head -n 50` to conserve memory and avoid I/O bottlenecks.
@@ -563,16 +580,15 @@ class AgentRunner:
         governor.start_turn()
         self._is_running_prompt = True
         try:
-            # Memory isolation
-            isolated_mem = bool(iso_cfg.get("isolated_memory", True)) if user_info else False
-            mem_uid = str(user_id) if (user_id and isolated_mem) else "default"
+            # Memory isolation: strictly per user_id across all accounts
+            mem_uid = str(user_id) if user_id else "default"
 
             try:
                 auto_extract_and_store_facts(prompt, user_id=mem_uid)
             except Exception as e:
                 logger.debug(f"Auto memory extraction skipped: {e}")
 
-            memory_ctx = get_relevant_context(prompt, user_id=mem_uid if isolated_mem else None)
+            memory_ctx = get_relevant_context(prompt, user_id=mem_uid)
             system_prompt = build_system_prompt(settings)
 
             # Inject user-specific constraints if permissions restricted

@@ -1,6 +1,7 @@
 """
 server_watchdog.py - Cross-Platform System Health Check & Service Monitor
 Monitors System Services, Disk, RAM, CPU & Uptime on both Windows and Linux.
+Defaults to English with full multi-language localization.
 """
 
 import asyncio
@@ -18,7 +19,8 @@ logger = logging.getLogger("server_watchdog")
 
 SERVICES_CONFIG = {
     "antigravity-bot": {
-        "name": "Passerelle Bot Telegram",
+        "name_en": "Telegram Bot Gateway",
+        "name_fr": "Passerelle Bot Telegram",
         "type": "systemd",
         "service": "antigravity-bot",
         "restart_cmd": ["systemctl", "restart", "antigravity-bot"],
@@ -43,13 +45,14 @@ async def _run_command(cmd: list) -> Tuple[int, str, str]:
         return 1, "", str(e)
 
 
-async def get_system_metrics() -> Dict[str, str]:
+async def get_system_metrics(lang: str = "en") -> Dict[str, str]:
+    is_fr = (lang == "fr")
     metrics = {
         "os": f"{platform.system()} {platform.release()} ({platform.machine()})",
-        "uptime": "Inconnu",
+        "uptime": "Unknown" if not is_fr else "Inconnu",
         "cpu": "0%",
-        "ram": "Inconnu",
-        "disk": "Inconnu",
+        "ram": "Unknown" if not is_fr else "Inconnu",
+        "disk": "Unknown" if not is_fr else "Inconnu",
     }
 
     try:
@@ -57,8 +60,9 @@ async def get_system_metrics() -> Dict[str, str]:
         days = up_secs // 86400
         hours = (up_secs % 86400) // 3600
         mins = (up_secs % 3600) // 60
+        day_suffix = "j" if is_fr else "d"
         if days > 0:
-            metrics["uptime"] = f"{days}j {hours}h {mins}m"
+            metrics["uptime"] = f"{days}{day_suffix} {hours}h {mins}m"
         elif hours > 0:
             metrics["uptime"] = f"{hours}h {mins}m"
         else:
@@ -69,7 +73,8 @@ async def get_system_metrics() -> Dict[str, str]:
     try:
         cpu_pct = psutil.cpu_percent(interval=0.1)
         cores = psutil.cpu_count(logical=True) or 1
-        metrics["cpu"] = f"{cpu_pct:.1f}% ({cores} cœurs)"
+        core_lbl = "cœurs" if is_fr else "cores"
+        metrics["cpu"] = f"{cpu_pct:.1f}% ({cores} {core_lbl})"
     except Exception:
         pass
 
@@ -77,7 +82,8 @@ async def get_system_metrics() -> Dict[str, str]:
         vm = psutil.virtual_memory()
         used_gb = (vm.total - vm.available) / (1024 ** 3)
         total_gb = vm.total / (1024 ** 3)
-        metrics["ram"] = f"{used_gb:.1f} / {total_gb:.1f} Go ({vm.percent:.0f}%)"
+        unit = "Go" if is_fr else "GB"
+        metrics["ram"] = f"{used_gb:.1f} / {total_gb:.1f} {unit} ({vm.percent:.0f}%)"
     except Exception:
         pass
 
@@ -86,14 +92,18 @@ async def get_system_metrics() -> Dict[str, str]:
         du = psutil.disk_usage(root_path)
         free_gb = du.free / (1024 ** 3)
         total_gb = du.total / (1024 ** 3)
-        metrics["disk"] = f"{free_gb:.1f} Go libres / {total_gb:.1f} Go ({du.percent:.0f}% occupé)"
+        if is_fr:
+            metrics["disk"] = f"{free_gb:.1f} Go libres / {total_gb:.1f} Go ({du.percent:.0f}% occupé)"
+        else:
+            metrics["disk"] = f"{free_gb:.1f} GB free / {total_gb:.1f} GB ({du.percent:.0f}% used)"
     except Exception:
         pass
 
     return metrics
 
 
-async def check_and_heal_services(auto_heal: bool = True) -> Tuple[Dict[str, Any], str, bool]:
+async def check_and_heal_services(auto_heal: bool = True, lang: str = "en") -> Tuple[Dict[str, Any], str, bool]:
+    is_fr = (lang == "fr")
     results = {}
     has_healed_any = False
 
@@ -101,10 +111,10 @@ async def check_and_heal_services(auto_heal: bool = True) -> Tuple[Dict[str, Any
 
     for key, conf in SERVICES_CONFIG.items():
         srv_name = conf["service"]
+        display_name = conf["name_fr"] if is_fr else conf["name_en"]
         if key == "antigravity-bot":
-            # Since this code is running inside the bot process itself, the bot is active!
             is_active = True
-            details = "Actif (En ligne)"
+            details = "Actif (En ligne)" if is_fr else "Active (Online)"
         elif has_systemctl:
             rc, out, _ = await _run_command(["systemctl", "is-active", srv_name])
             is_active = (out.strip() == "active")
@@ -115,42 +125,65 @@ async def check_and_heal_services(auto_heal: bool = True) -> Tuple[Dict[str, Any
                 is_active = (out.strip() == "active")
                 if is_active:
                     has_healed_any = True
-            details = "Actif" if is_active else "Arrêté"
+            if is_fr:
+                details = "Actif" if is_active else "Arrêté"
+            else:
+                details = "Active" if is_active else "Stopped"
         else:
             is_active = True
-            details = "Processus natif actif"
+            details = "Processus natif actif" if is_fr else "Native process active"
 
         results[key] = {
-            "name": conf["name"],
+            "name": display_name,
             "status": "ONLINE" if is_active else "OFFLINE",
             "details": details,
         }
 
-    metrics = await get_system_metrics()
+    metrics = await get_system_metrics(lang=lang)
 
-    lines = [
-        f"📊 <b>État du Système ({metrics['os']}) :</b>",
-    ]
-    for k, v in results.items():
-        emoji = "✅" if v["status"] == "ONLINE" else "❌"
-        lines.append(f"• <b>{v['name']} :</b> {emoji} {v['details']}")
+    if is_fr:
+        lines = [
+            f"📊 <b>État du Système ({metrics['os']}) :</b>",
+        ]
+        for k, v in results.items():
+            emoji = "✅" if v["status"] == "ONLINE" else "❌"
+            lines.append(f"• <b>{v['name']} :</b> {emoji} {v['details']}")
 
-    lines.append("")
-    lines.append("⚙️ <b>Ressources Système :</b>")
-    lines.append(f"• <b>CPU :</b> <code>{metrics['cpu']}</code>")
-    lines.append(f"• <b>Mémoire RAM :</b> <code>{metrics['ram']}</code>")
-    lines.append(f"• <b>Espace Disque :</b> <code>{metrics['disk']}</code>")
-    lines.append(f"• <b>Uptime :</b> <code>{metrics['uptime']}</code>")
+        lines.append("")
+        lines.append("⚙️ <b>Ressources Système :</b>")
+        lines.append(f"• <b>CPU :</b> <code>{metrics['cpu']}</code>")
+        lines.append(f"• <b>Mémoire RAM :</b> <code>{metrics['ram']}</code>")
+        lines.append(f"• <b>Espace Disque :</b> <code>{metrics['disk']}</code>")
+        lines.append(f"• <b>Uptime :</b> <code>{metrics['uptime']}</code>")
+    else:
+        lines = [
+            f"📊 <b>System Status ({metrics['os']}):</b>",
+        ]
+        for k, v in results.items():
+            emoji = "✅" if v["status"] == "ONLINE" else "❌"
+            lines.append(f"• <b>{v['name']}:</b> {emoji} {v['details']}")
+
+        lines.append("")
+        lines.append("⚙️ <b>System Resources:</b>")
+        lines.append(f"• <b>CPU:</b> <code>{metrics['cpu']}</code>")
+        lines.append(f"• <b>RAM Memory:</b> <code>{metrics['ram']}</code>")
+        lines.append(f"• <b>Disk Space:</b> <code>{metrics['disk']}</code>")
+        lines.append(f"• <b>Uptime:</b> <code>{metrics['uptime']}</code>")
 
     report_html = "\n".join(lines)
     return results, report_html, has_healed_any
 
 
-async def restart_service(service_name: str) -> Tuple[bool, str]:
+async def restart_service(service_name: str, lang: str = "en") -> Tuple[bool, str]:
+    is_fr = (lang == "fr")
     if service_name in SERVICES_CONFIG:
         conf = SERVICES_CONFIG[service_name]
+        d_name = conf["name_fr"] if is_fr else conf["name_en"]
         if shutil.which("systemctl"):
             rc, out, err = await _run_command(conf["restart_cmd"])
-            return (rc == 0), f"{conf['name']} redémarré." if rc == 0 else f"Erreur : {err}"
-        return False, "Systemd non disponible sur cet OS (redémarrez le processus manuellement)."
-    return False, f"Service inconnu : {service_name}"
+            if rc == 0:
+                return True, f"{d_name} redémarré." if is_fr else f"{d_name} restarted successfully."
+            else:
+                return False, f"Erreur : {err}" if is_fr else f"Error: {err}"
+        return False, "Systemd non disponible sur cet OS." if is_fr else "Systemd not available on this OS."
+    return False, f"Service inconnu : {service_name}" if is_fr else f"Unknown service: {service_name}"

@@ -360,8 +360,65 @@ async def check_admin_access(update: Update, send_error_in_private: bool = True)
         # Strict silence in groups! Never leak bot permissions in a shared group chat!
         return False
     if send_error_in_private and update.effective_message:
-        await update.effective_message.reply_text("⛔ Commande réservée à l'administrateur.")
+        await update.effective_message.reply_text(t("cmd_admin_only", user_id=uid))
     return False
+
+
+async def notify_admins_of_access_request(
+    bot,
+    user_id: int,
+    name: str,
+    username: str = "",
+    user_message: str = "",
+) -> int:
+    """Register access request and broadcast interactive notification to all administrators."""
+    auth_mgr.register_access_request(user_id, name, username)
+    admin_ids = auth_mgr.get_all_admin_ids()
+    notified_count = 0
+
+    for adm_id in admin_ids:
+        try:
+            adm_lang = get_user_language(adm_id)
+            acc_iso_txt = "🌟 Accepter (Isolé)" if adm_lang == "fr" else "🌟 Accept (Isolated)"
+            acc_shared_txt = "🤝 Accepter (Partagé)" if adm_lang == "fr" else "🤝 Accept (Shared)"
+            refuse_txt = "🚫 Refuser" if adm_lang == "fr" else "🚫 Deny"
+            admin_kb = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(acc_iso_txt, callback_data=f"auth:approve_iso:{user_id}"),
+                    InlineKeyboardButton(acc_shared_txt, callback_data=f"auth:approve_shared:{user_id}"),
+                ],
+                [
+                    InlineKeyboardButton(refuse_txt, callback_data=f"auth:role:{user_id}:{ROLE_BLOCKED}"),
+                ]
+            ])
+            msg_snippet = f"\n• <b>Message :</b> <i>{h(user_message[:120])}</i>" if user_message else ""
+            if adm_lang == "fr":
+                adm_text = (
+                    "👤 <b>Nouvelle demande d'accès au Bot !</b>\n\n"
+                    f"• <b>Nom :</b> {h(name)}\n"
+                    f"• <b>Username :</b> @{h(username) if username else 'aucun'}\n"
+                    f"• <b>ID Telegram :</b> <code>{user_id}</code>{msg_snippet}\n\n"
+                    "Choisissez le mode d'accès pour cet utilisateur :"
+                )
+            else:
+                adm_text = (
+                    "👤 <b>New Bot Access Request!</b>\n\n"
+                    f"• <b>Name:</b> {h(name)}\n"
+                    f"• <b>Username:</b> @{h(username) if username else 'none'}\n"
+                    f"• <b>Telegram ID:</b> <code>{user_id}</code>{msg_snippet}\n\n"
+                    "Select access mode for this user:"
+                )
+            await bot.send_message(
+                chat_id=adm_id,
+                text=adm_text,
+                reply_markup=admin_kb,
+                parse_mode=PM,
+            )
+            notified_count += 1
+        except Exception as ex:
+            logger.warning(f"Could not notify admin {adm_id} of access request from {user_id}: {ex}")
+
+    return notified_count
 
 
 def _render_user_detail_text(u: dict, uid_str: str, lang: str = "en") -> str:
@@ -492,9 +549,11 @@ def _get_user_detail_keyboard(target_uid: str, lang: str = "en") -> InlineKeyboa
         InlineKeyboardButton(perms_txt, callback_data=f"auth:perms_menu:{target_uid}"),
         InlineKeyboardButton(iso_txt, callback_data=f"auth:iso_menu:{target_uid}"),
     ])
-    # Row 2: Dedicated bot setup
+    # Row 2: Dedicated bot setup & Edit Name/Username
     bot_txt = "🤖 Bot Telegram Dédié" if lang == "fr" else "🤖 Dedicated Telegram Bot"
+    rename_txt = "✏️ Modifier Nom/Pseudo" if lang == "fr" else "✏️ Edit Name/Username"
     rows.append([
+        InlineKeyboardButton(rename_txt, callback_data=f"auth:rename:{target_uid}"),
         InlineKeyboardButton(bot_txt, callback_data=f"auth:bot_menu:{target_uid}"),
     ])
     # Row 3: Role switching
@@ -727,13 +786,23 @@ async def post_init(application) -> None:
             old_sha = ack_data.get("old_sha", "")
             new_sha = ack_data.get("new_sha", "")
             agy_ver = ack_data.get("agy_version", "")
-            done_text = (
-                "✅ <b>Mise à Jour Terminée &amp; Système Redémarré avec Succès !</b>\n\n"
-                f"• 📦 <b>Version du Bot :</b> <code>v{h(bot_ver)}</code> (<code>{h(old_sha)}</code> ➔ <code>{h(new_sha)}</code>)\n"
-                f"• ⚡ <b>Antigravity CLI :</b> <code>v{h(agy_ver)}</code> (Compatible ✅)\n"
-                f"• 🧠 <b>Modèle actif :</b> <code>{h(settings.get('model', ''))}</code>\n"
-                "• 🛡️ <b>Données, Mémoire Mem0, Sessions &amp; Skills :</b> 100% préservés !"
-            )
+            adm_lang = get_user_language(ack_chat or admin_id, fallback="en")
+            if adm_lang == "fr":
+                done_text = (
+                    "✅ <b>Mise à Jour Terminée &amp; Système Redémarré avec Succès !</b>\n\n"
+                    f"• 📦 <b>Version du Bot :</b> <code>v{h(bot_ver)}</code> (<code>{h(old_sha)}</code> ➔ <code>{h(new_sha)}</code>)\n"
+                    f"• ⚡ <b>Antigravity CLI :</b> <code>v{h(agy_ver)}</code> (Compatible ✅)\n"
+                    f"• 🧠 <b>Modèle actif :</b> <code>{h(settings.get('model', ''))}</code>\n"
+                    "• 🛡️ <b>Données, Mémoire Mem0, Sessions &amp; Skills :</b> 100% préservés !"
+                )
+            else:
+                done_text = (
+                    "✅ <b>Update Complete &amp; System Restarted Successfully!</b>\n\n"
+                    f"• 📦 <b>Bot Version:</b> <code>v{h(bot_ver)}</code> (<code>{h(old_sha)}</code> ➔ <code>{h(new_sha)}</code>)\n"
+                    f"• ⚡ <b>Antigravity CLI:</b> <code>v{h(agy_ver)}</code> (Compatible ✅)\n"
+                    f"• 🧠 <b>Active Model:</b> <code>{h(settings.get('model', ''))}</code>\n"
+                    "• 🛡️ <b>Data, Long-Term Memory, Sessions &amp; Skills:</b> 100% preserved!"
+                )
             if ack_chat and ack_msg_id:
                 try:
                     await application.bot.edit_message_text(
@@ -751,16 +820,26 @@ async def post_init(application) -> None:
 
     if admin_id and not just_completed_update:
         try:
-            _, report_html, has_healed = await check_and_heal_services(auto_heal=True)
+            adm_lang = get_user_language(admin_id, fallback="en")
+            _, report_html, has_healed = await check_and_heal_services(auto_heal=True, lang=adm_lang)
             agent_name = settings.get("agent_name", "Antigravity Agent")
             ver_info = load_local_version_manifest()
-            heal_notice = "\n<i>(Services relancés automatiquement)</i>" if has_healed else ""
-            boot_msg = (
-                f"🟢 <b>{h(agent_name)} (v{h(ver_info.get('bot_version', '4.1.0'))}) est en ligne !</b>{heal_notice}\n\n"
-                f"{report_html}\n\n"
-                f"• 🧠 <b>Modèle actif :</b> <code>{h(settings.get('model', ''))}</code>\n"
-                f"• 🎛️ <i>Tapez /settings pour le Centre de Contrôle, /update pour vérifier les mises à jour ou /help.</i>"
-            )
+            if adm_lang == "fr":
+                heal_notice = "\n<i>(Services relancés automatiquement)</i>" if has_healed else ""
+                boot_msg = (
+                    f"🟢 <b>{h(agent_name)} (v{h(ver_info.get('bot_version', '4.1.0'))}) est en ligne !</b>{heal_notice}\n\n"
+                    f"{report_html}\n\n"
+                    f"• 🧠 <b>Modèle actif :</b> <code>{h(settings.get('model', ''))}</code>\n"
+                    f"• 🎛️ <i>Tapez /settings pour le Centre de Contrôle, /update pour vérifier les mises à jour ou /help.</i>"
+                )
+            else:
+                heal_notice = "\n<i>(Services automatically healed)</i>" if has_healed else ""
+                boot_msg = (
+                    f"🟢 <b>{h(agent_name)} (v{h(ver_info.get('bot_version', '4.1.0'))}) is online!</b>{heal_notice}\n\n"
+                    f"{report_html}\n\n"
+                    f"• 🧠 <b>Active Model:</b> <code>{h(settings.get('model', ''))}</code>\n"
+                    f"• 🎛️ <i>Type /settings for Control Center, /update to check updates or /help.</i>"
+                )
             await application.bot.send_message(chat_id=admin_id, text=boot_msg, parse_mode=PM)
         except Exception as be:
             logger.debug(f"Could not send boot notification: {be}")
@@ -800,7 +879,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=chat.id,
-                text="🛡️ <b>Accès Refusé :</b> Ce bot Antigravity fonctionne exclusivement en messages privés. Les groupes Telegram sont désactivés.",
+                text="🛡️ <b>Access Denied:</b> This Antigravity bot works exclusively in private messages. Telegram groups are disabled.",
                 parse_mode=PM,
             )
         except Exception:
@@ -883,6 +962,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         await update.message.reply_text(welcome_user, parse_mode=PM)
     elif auth_mgr.get_user_role(uid) == ROLE_PENDING:
+        await notify_admins_of_access_request(context.bot, uid, first_name, getattr(user, "username", "") or "", user_message="/start")
         msg = (
             "⏳ <b>Demande en cours d'examen</b>\n\nVotre demande d'accès a été transmise à l'administrateur. Vous recevrez une notification dès sa validation."
             if user_lang == "fr" else
@@ -1014,7 +1094,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sess_str = f"Active (<code>{conv_id[:12]}…</code>)" if conv_id else ("Active" if runner.has_active_session else "Nouvelle session vierge")
         t_val = int(settings.get("timeout", 600))
         t_str = "♾️ Infini" if t_val <= 0 else (f"{t_val // 60} min" if t_val < 3600 else f"{t_val // 3600}h")
-        _, sys_report, _ = await check_and_heal_services(auto_heal=False)
+        _, sys_report, _ = await check_and_heal_services(auto_heal=False, lang="fr")
         st_msg = (
             f"🖥️ <b>Statut Global — {h(settings.get('agent_name', 'Antigravity Agent'))}</b>\n\n"
             f"• <b>État de l'Agent :</b> {running_str}\n"
@@ -1043,7 +1123,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sess_str = f"Active (<code>{conv_id[:12]}…</code>)" if conv_id else ("Active" if runner.has_active_session else "New blank session")
         t_val = int(settings.get("timeout", 600))
         t_str = "♾️ Infinite" if t_val <= 0 else (f"{t_val // 60} min" if t_val < 3600 else f"{t_val // 3600}h")
-        _, sys_report, _ = await check_and_heal_services(auto_heal=False)
+        _, sys_report, _ = await check_and_heal_services(auto_heal=False, lang="en")
         st_msg = (
             f"🖥️ <b>Global Status — {h(settings.get('agent_name', 'Antigravity Agent'))}</b>\n\n"
             f"• <b>Agent State:</b> {running_str}\n"
@@ -1765,7 +1845,7 @@ async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lines.append(f"🔹 <b>#{r['id']}</b> [{h(r['category'])}] (score: {r['score']}) :\n<i>{h(r['content'])}</i>\n")
         await update.message.reply_text("\n".join(lines), parse_mode=PM)
     else:
-        await update.message.reply_text(get_summary_html(user_id=str(uid)), parse_mode=PM)
+        await update.message.reply_text(get_summary_html(user_id=str(uid), lang=user_lang), parse_mode=PM)
 
 
 async def cmd_remember(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1975,7 +2055,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         user_lang = get_user_language(uid)
         name = query.from_user.first_name or ("Utilisateur" if user_lang == "fr" else "User")
         username = query.from_user.username or ""
-        auth_mgr.register_access_request(uid, name, username)
+        await notify_admins_of_access_request(context.bot, uid, name, username, user_message="Requested access via button")
         req_sent_msg = (
             "📨 <b>Votre demande d'accès a été transmise à l'administrateur !</b>\n\n"
             "Vous recevrez une notification dès qu'elle aura été validée."
@@ -1984,43 +2064,6 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             "You will receive a notification once reviewed."
         )
         await safe_edit_message(query.message, req_sent_msg)
-        admin_id = auth_mgr.get_primary_admin_id()
-        if admin_id:
-            adm_lang = get_user_language(admin_id)
-            try:
-                acc_iso_txt = "🌟 Accepter (Isolé)" if adm_lang == "fr" else "🌟 Accept (Isolated)"
-                acc_shared_txt = "🤝 Accepter (Partagé)" if adm_lang == "fr" else "🤝 Accept (Shared)"
-                refuse_txt = "🚫 Refuser" if adm_lang == "fr" else "🚫 Deny"
-                admin_kb = InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton(acc_iso_txt, callback_data=f"auth:approve_iso:{uid}"),
-                        InlineKeyboardButton(acc_shared_txt, callback_data=f"auth:approve_shared:{uid}"),
-                    ],
-                    [
-                        InlineKeyboardButton(refuse_txt, callback_data=f"auth:role:{uid}:{ROLE_BLOCKED}"),
-                    ]
-                ])
-                adm_text = (
-                    "👤 <b>Nouvelle demande d'accès au Bot !</b>\n\n"
-                    f"• <b>Nom :</b> {h(name)}\n"
-                    f"• <b>Username :</b> @{h(username) if username else 'aucun'}\n"
-                    f"• <b>ID Telegram :</b> <code>{uid}</code>\n\n"
-                    "Choisissez le mode d'accès pour cet utilisateur :"
-                    if adm_lang == "fr" else
-                    "👤 <b>New Bot Access Request!</b>\n\n"
-                    f"• <b>Name:</b> {h(name)}\n"
-                    f"• <b>Username:</b> @{h(username) if username else 'none'}\n"
-                    f"• <b>Telegram ID:</b> <code>{uid}</code>\n\n"
-                    "Select access mode for this user:"
-                )
-                await context.bot.send_message(
-                    chat_id=admin_id,
-                    text=adm_text,
-                    reply_markup=admin_kb,
-                    parse_mode=PM,
-                )
-            except Exception as ex:
-                logger.warning(f"Could not notify admin of access request: {ex}")
         return
 
     if data == "abort_running" or data.startswith("abort_running:"):
@@ -2150,6 +2193,33 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 _render_user_detail_text(u, target_uid, lang=user_lang),
                 reply_markup=_get_user_detail_keyboard(target_uid, lang=user_lang),
             )
+
+        elif data.startswith("auth:rename:"):
+            target_uid = data.split(":")[2]
+            pending_admin_input[uid] = f"auth_rename_user:{target_uid}"
+            cancel_txt = "⬅️ Annuler" if user_lang == "fr" else "⬅️ Cancel"
+            cancel_kb = InlineKeyboardMarkup([[InlineKeyboardButton(cancel_txt, callback_data=f"auth:view:{target_uid}")]])
+            if user_lang == "fr":
+                prompt_txt = (
+                    f"✏️ <b>Modifier le Nom et Pseudo de l'utilisateur (ID: <code>{target_uid}</code>) :</b>\n\n"
+                    "Envoyez le nouveau nom d'affichage et optionnellement le pseudo Telegram (@username).\n\n"
+                    "<i>Exemples :</i>\n"
+                    "• <code>Alice Dupont</code>\n"
+                    "• <code>@alice_tele</code>\n"
+                    "• <code>Alice @alice_tele</code>\n\n"
+                    "💡 <i>Tapez /cancel pour annuler.</i>"
+                )
+            else:
+                prompt_txt = (
+                    f"✏️ <b>Edit Name and Username for user (ID: <code>{target_uid}</code>):</b>\n\n"
+                    "Send the new display name and optionally the Telegram @username.\n\n"
+                    "<i>Examples:</i>\n"
+                    "• <code>Alice Dupont</code>\n"
+                    "• <code>@alice_tele</code>\n"
+                    "• <code>Alice @alice_tele</code>\n\n"
+                    "💡 <i>Type /cancel to abort.</i>"
+                )
+            await safe_edit_message(query.message, prompt_txt, reply_markup=cancel_kb)
 
         elif data.startswith("auth:perms_menu:"):
             target_uid = data.split(":")[2]
@@ -4044,6 +4114,60 @@ async def _handle_pending_admin_input(update: Update, context: ContextTypes.DEFA
         )
         return True
 
+    if state.startswith("auth_rename_user:"):
+        target_uid_str = state.split(":")[1]
+        try:
+            target_uid_int = int(target_uid_str)
+        except ValueError:
+            target_uid_int = 0
+
+        raw_val = text.strip()
+        if raw_val.lower() in ("cancel", "annuler", "/cancel"):
+            cancel_txt = "Modification annulée." if user_lang == "fr" else "Edit cancelled."
+            await update.message.reply_text(cancel_txt, parse_mode=PM)
+            return True
+
+        name_val = raw_val
+        username_val = None
+
+        if "@" in raw_val:
+            tokens = raw_val.split()
+            u_tokens = [t.lstrip("@") for t in tokens if t.startswith("@")]
+            n_tokens = [t for t in tokens if not t.startswith("@")]
+            if u_tokens:
+                username_val = u_tokens[0]
+            if n_tokens:
+                name_val = " ".join(n_tokens)
+            else:
+                name_val = f"@{username_val}"
+
+        auth_mgr.update_user_name_or_username(
+            target_uid_int,
+            name=name_val,
+            username=username_val,
+        )
+        u_info = auth_mgr.get_user(target_uid_int) or {}
+        if user_lang == "fr":
+            resp_txt = (
+                f"✅ <b>Utilisateur mis à jour avec succès !</b>\n\n"
+                f"• <b>Nom :</b> {h(u_info.get('name', ''))}\n"
+                f"• <b>Username :</b> @{h(u_info.get('username') or 'aucun')}\n"
+                f"• <b>ID Telegram :</b> <code>{target_uid_str}</code>"
+            )
+        else:
+            resp_txt = (
+                f"✅ <b>User updated successfully!</b>\n\n"
+                f"• <b>Name:</b> {h(u_info.get('name', ''))}\n"
+                f"• <b>Username:</b> @{h(u_info.get('username') or 'none')}\n"
+                f"• <b>Telegram ID:</b> <code>{target_uid_str}</code>"
+            )
+        await update.message.reply_text(
+            resp_txt,
+            reply_markup=_get_user_detail_keyboard(target_uid_str, lang=user_lang),
+            parse_mode=PM,
+        )
+        return True
+
     if state.startswith("auth_bot_token:"):
         target_uid = int(state.split(":", 1)[1])
         tok = text.strip()
@@ -4335,26 +4459,18 @@ async def handle_prompt_message(update: Update, context: ContextTypes.DEFAULT_TY
 
     # PRIVATE CHAT LOGIC: Check authorization
     if not auth_mgr.is_authorized(uid):
-        u_info = auth_mgr.get_user(uid)
-        if u_info and u_info.get("role") == ROLE_PENDING:
-            pending_msg = (
-                "⏳ <b>Demande en cours d'examen</b>\n\n"
-                "Votre demande d'accès a été transmise à l'administrateur."
-                if is_fr else
-                "⏳ <b>Request Pending</b>\n\n"
-                "Your access request has been sent to the administrator."
-            )
-            await update.message.reply_text(pending_msg, parse_mode=PM)
-            return
+        u_name = user.first_name or f"User_{uid}"
+        u_uname = user.username or ""
+        await notify_admins_of_access_request(context.bot, uid, u_name, u_uname, user_message=prompt)
 
-        req_btn = "📨 Demander l'accès" if is_fr else "📨 Request Access"
-        welcome_guest = (
-            "👋 <b>Bonjour !</b>\n\nCe bot Antigravity est privé. Cliquez ci-dessous pour demander un accès :"
+        pending_msg = (
+            "⏳ <b>Demande en cours d'examen</b>\n\n"
+            "Votre demande d'accès a été transmise à l'administrateur. Vous recevrez une notification dès sa validation."
             if is_fr else
-            "👋 <b>Hello!</b>\n\nThis Antigravity bot is private. Click below to request access:"
+            "⏳ <b>Request Pending</b>\n\n"
+            "Your access request has been sent to the administrator. You will be notified once reviewed."
         )
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton(req_btn, callback_data="guest_req:ask")]])
-        await update.message.reply_text(welcome_guest, reply_markup=kb, parse_mode=PM)
+        await update.message.reply_text(pending_msg, parse_mode=PM)
         return
 
     # Admin pending input check
@@ -4669,24 +4785,57 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
     safe_name = re.sub(r"[^\w.\-]", "_", orig_name)
     tmp_path = TEMP_DIR / safe_name
     await file.download_to_drive(str(tmp_path))
-    default_aud_cap = "Écoute, transcris ou traite ce fichier audio et réponds à la demande." if is_fr else "Listen to, transcribe, or process this audio file and fulfill the request."
-    caption = update.message.caption or default_aud_cap
-    prompt = (
-        f"[{'MESSAGE VOCAL' if is_voice else 'FICHIER AUDIO'} FOURNI PAR L'UTILISATEUR]\n"
-        f"Chemin local du fichier audio : `{tmp_path.resolve()}`\n"
-        f"Tu peux l'écouter/analyser directement avec `view_file` sur `{tmp_path.resolve()}` ou le traiter avec Python/ffmpeg.\n\n"
-        f"Instructions :\n{caption}"
-    )
-    icon = "🎙️" if is_voice else "🎵"
-    if is_fr:
-        aud_label = "Vocal reçu" if is_voice else "Audio reçu"
+
+    # Transcribe audio using automatic chunked speech-to-text
+    transcription = ""
+    detected_loc = "en-US"
+    try:
+        from audio_transcriber import transcribe_audio_file
+        transcription, detected_loc = await asyncio.get_event_loop().run_in_executor(
+            None, transcribe_audio_file, tmp_path, user_lang
+        )
+    except Exception as te:
+        logger.warning(f"Audio transcription notice: {te}")
+
+    if transcription:
+        if "fr" in detected_loc.lower():
+            detect_and_set_language(uid, transcription, "fr")
+            user_lang = get_user_language(uid)
+            is_fr = (user_lang == "fr")
+        elif "en" in detected_loc.lower():
+            detect_and_set_language(uid, transcription, "en")
+            user_lang = get_user_language(uid)
+            is_fr = (user_lang == "fr")
+
+    default_aud_cap = "Listen to, transcribe, or process this audio file and fulfill the request."
+    caption = update.message.caption or ""
+
+    if transcription:
+        prompt_parts = [
+            f"[SPOKEN VOICE MESSAGE TRANSCRIPTION FROM USER]\n\"{transcription}\"",
+        ]
+        if caption:
+            prompt_parts.append(f"[USER CAPTION / INSTRUCTIONS]\n{caption}")
+        prompt_parts.append(f"(Original audio file saved at: `{tmp_path.resolve()}`)\n\nPlease fulfill the user's request above.")
+        prompt = "\n\n".join(prompt_parts)
+
+        aud_label = "Vocal transcrit" if is_fr else "Voice note transcribed"
+        header = f"🎙️ <i>{aud_label} :</i>\n💬 <i>\"{h(transcription)}\"</i>\n\n"
     else:
-        aud_label = "Voice note received" if is_voice else "Audio received"
+        aud_label = "Vocal reçu" if is_voice else "Audio reçu" if is_fr else ("Voice note received" if is_voice else "Audio received")
+        prompt = (
+            f"[{'VOICE NOTE' if is_voice else 'AUDIO FILE'} PROVIDED BY USER]\n"
+            f"Local audio file path: `{tmp_path.resolve()}`\n\n"
+            f"Instructions:\n{caption or default_aud_cap}"
+        )
+        icon = "🎙️" if is_voice else "🎵"
+        header = f"{icon} <i>{aud_label} : <code>{h(safe_name)}</code></i>\n\n"
+
     await _process_user_turn(
         update,
         context,
         prompt,
-        header=f"{icon} <i>{aud_label} : <code>{h(safe_name)}</code></i>\n\n",
+        header=header,
     )
 
 

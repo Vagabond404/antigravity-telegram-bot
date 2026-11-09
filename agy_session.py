@@ -75,6 +75,9 @@ CONNECTION_ERROR_KEYWORDS = [
     "socket closed",
     "eof",
     "api error (attempt",
+    "the stream was interrupted",
+    "stream was interrupted",
+    "stream interrupted",
 ]
 
 
@@ -437,7 +440,7 @@ class AgySession:
                 accumulated_text: List[str] = []
                 final_response: str = ""
                 got_success = False
-                current_action = "🧠 Analyse en cours..."
+                current_action = "🧠 Analyzing..."
                 pending_tools: Dict[str, Dict[str, Any]] = {}
                 active_tool_name: str = ""
                 active_tool_start_time: Optional[float] = None
@@ -634,7 +637,7 @@ class AgySession:
                                     await self._stop_process()
                                     self._has_active_session = False
                                     return (err, False, False)
-                                return (f"Erreur Antigravity : {err}", False, False)
+                                return (f"Antigravity Error: {err}", False, False)
 
                         elif evt_type == "raw_output":
                             raw_txt = event.get("text", "")

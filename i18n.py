@@ -253,22 +253,41 @@ def detect_language(text: str, user_telegram_lang: Optional[str] = None) -> str:
 
 
 def get_user_language(user_id: int, fallback: str = DEFAULT_LANGUAGE) -> str:
-    """Get currently active language for a specific user."""
-    return _user_languages.get(user_id, fallback)
+    """Get currently active language for a specific user, persisting across restarts."""
+    if user_id in _user_languages:
+        return _user_languages[user_id]
+    try:
+        from auth_manager import auth_mgr
+        u = auth_mgr.get_user(user_id)
+        if u and u.get("language"):
+            code = str(u["language"]).lower().strip()
+            _user_languages[user_id] = code
+            return code
+    except Exception:
+        pass
+    return fallback
 
 
 def set_user_language(user_id: int, lang: str) -> None:
-    """Explicitly set user's preferred language."""
+    """Explicitly set user's preferred language and persist in users.json."""
     code = (lang or "").lower().strip()
     if code:
         _user_languages[user_id] = code
+        try:
+            from auth_manager import auth_mgr
+            auth_mgr.update_user(user_id, {"language": code})
+        except Exception:
+            pass
 
 
 def detect_and_set_language(user_id: int, text: str, user_telegram_lang: Optional[str] = None) -> str:
     """Detect language from message and update user's session language preference."""
+    current = get_user_language(user_id, fallback="")
     lang = detect_language(text, user_telegram_lang)
-    _user_languages[user_id] = lang
-    return lang
+    if lang:
+        set_user_language(user_id, lang)
+        return lang
+    return current or DEFAULT_LANGUAGE
 
 
 def t(key: str, lang: Optional[str] = None, user_id: Optional[int] = None, **kwargs) -> str:

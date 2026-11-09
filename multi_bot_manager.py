@@ -247,7 +247,32 @@ class MultiBotManager:
             caption = (update.message.caption or "").strip()
             user_lang = get_user_language(owner_id)
             default_prompt = "Analyse ce média et réponds à ma demande." if user_lang == "fr" else "Analyze this media and fulfill my request."
-            prompt = caption or default_prompt
+
+            # If voice or audio, automatically transcribe it
+            media = update.message.voice or update.message.audio
+            if media:
+                try:
+                    f = await media.get_file()
+                    ext = ".ogg" if update.message.voice else ".mp3"
+                    tmp_p = BASE_DIR / "tmp" / f"sec_audio_{media.file_unique_id}{ext}"
+                    tmp_p.parent.mkdir(parents=True, exist_ok=True)
+                    await f.download_to_drive(str(tmp_p))
+                    from audio_transcriber import transcribe_audio_file
+                    transcription, _ = await asyncio.get_event_loop().run_in_executor(
+                        None, transcribe_audio_file, tmp_p, user_lang
+                    )
+                    if transcription:
+                        prompt = f"[SPOKEN VOICE MESSAGE TRANSCRIPTION]\n\"{transcription}\""
+                        if caption:
+                            prompt += f"\n\n[CAPTION]\n{caption}"
+                    else:
+                        prompt = caption or default_prompt
+                except Exception as ex:
+                    logger.warning(f"Secondary bot audio transcription notice: {ex}")
+                    prompt = caption or default_prompt
+            else:
+                prompt = caption or default_prompt
+
             await turn_callback(
                 update=update,
                 context=context,

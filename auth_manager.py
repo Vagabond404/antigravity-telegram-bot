@@ -87,6 +87,7 @@ def _normalize_user_record(uid: str, data: Dict[str, Any]) -> Dict[str, Any]:
     record = dict(data)
     record.setdefault("name", f"User_{uid}")
     record.setdefault("username", "")
+    record.setdefault("language", "en")
     record.setdefault("role", ROLE_USER if uid != str(config.ALLOWED_USER_ID or "") else ROLE_ADMIN)
     record.setdefault("created_at", str(date.today()))
 
@@ -101,6 +102,8 @@ def _normalize_user_record(uid: str, data: Dict[str, Any]) -> Dict[str, Any]:
 
     iso = dict(DEFAULT_ISOLATION)
     iso.update(record.get("isolation", {}))
+    # Every user without exception has their own isolated long-term memory
+    iso["isolated_memory"] = True
     if record["role"] == ROLE_ADMIN:
         # Default for admin is shared or root workspace
         iso.setdefault("mode", "shared")
@@ -210,6 +213,49 @@ class AuthManager:
             if u.get("role") == ROLE_ADMIN and str(uid).isdigit():
                 return int(uid)
         return None
+
+    def get_all_admin_ids(self) -> List[int]:
+        """Return all registered administrator Telegram IDs."""
+        self._ensure_admin_registered()
+        users = _load_users_raw()
+        admins = set()
+        if config.ALLOWED_USER_ID:
+            try:
+                admins.add(int(config.ALLOWED_USER_ID))
+            except (ValueError, TypeError):
+                pass
+        for uid, u in users.items():
+            if u.get("role") == ROLE_ADMIN and str(uid).lstrip("-").isdigit():
+                try:
+                    admins.add(int(uid))
+                except Exception:
+                    pass
+        return list(admins)
+
+    def update_user(self, user_id: int, updates: Dict[str, Any]) -> bool:
+        """Update arbitrary user fields safely with normalization."""
+        users = _load_users_raw()
+        uid = str(user_id)
+        if uid not in users:
+            users[uid] = _normalize_user_record(uid, updates)
+        else:
+            users[uid].update(updates)
+            users[uid] = _normalize_user_record(uid, users[uid])
+        return _save_users_raw(users)
+
+    def update_user_name_or_username(
+        self, user_id: int, name: Optional[str] = None, username: Optional[str] = None
+    ) -> bool:
+        """Update display name and/or @username for a user."""
+        users = _load_users_raw()
+        uid = str(user_id)
+        if uid not in users:
+            users[uid] = _normalize_user_record(uid, {})
+        if name is not None and name.strip():
+            users[uid]["name"] = name.strip()
+        if username is not None:
+            users[uid]["username"] = username.strip().lstrip("@")
+        return _save_users_raw(users)
 
     def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
         self._ensure_admin_registered()
