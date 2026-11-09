@@ -492,8 +492,8 @@ class AgySession:
                                     return (f"⏱️ File tool timed out ({active_tool_name} > {int(file_limit)}s). Turn aborted.", False, False)
                             else:
                                 # Active execution commands (run_command, etc.):
-                                # Sane ceiling of 600s (10 min) even in infinite mode to prevent runaway blind searches (e.g. grep on node_modules)
-                                cmd_limit = timeout if timeout > 0 else 600.0
+                                # Sane ceiling of 300s (5 min) to prevent runaway commands or interactive prompts from blocking the bot
+                                cmd_limit = min(timeout, 300.0) if timeout > 0 else 300.0
                                 if tool_elapsed >= cmd_limit:
                                     logger.warning(f"Command '{active_tool_name}' hanging for {tool_elapsed:.1f}s (> {cmd_limit}s). Aborting turn...")
                                     await self.abort()

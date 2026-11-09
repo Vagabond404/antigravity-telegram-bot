@@ -35,3 +35,24 @@ env/
 .DS_Store
 Thumbs.db
 *.log
+
+# Heavy Dependencies, Media & Build Artifacts (Prevents agy repo watcher freezing on ARM)
+node_modules/
+**/node_modules/
+.cache/
+remotion_studio/
+vault/
+models_3d/
+x96_case/
+fonts/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.apkg
+*.pdf
+*.wasm
+*.so
+*.pack
+*.idx
+*.stl
