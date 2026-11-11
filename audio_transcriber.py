@@ -25,6 +25,7 @@ LANG_TO_GOOGLE_LOCALE = {
     "ja": "ja-JP",
     "zh": "zh-CN",
     "ar": "ar-SA",
+    "km": "km-KH",
 }
 
 

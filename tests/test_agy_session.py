@@ -7,7 +7,7 @@ tool description generation, and session lifecycle management.
 import json
 import asyncio
 import pytest
-from agy_session import AgySession, is_quota_error
+from agy_session import AgySession, is_quota_error, is_safety_error
 
 
 def test_is_quota_error():
@@ -53,6 +53,20 @@ def test_stream_json_input_payload():
     assert data["message"]["content"] == prompt
 
 
+def test_is_safety_error():
+    err1 = (
+        "Your previous response was blocked by content safety filters: "
+        "The model output could not be generated. This output contains sensitive words that violate Google's "
+        "[Generative AI Prohibited Use policy](https://policies.google.com/terms/generative-ai/use-policy)."
+    )
+    assert is_safety_error(err1) is True
+    assert is_safety_error("finish_reason: SAFETY") is True
+    assert is_safety_error("candidate was blocked by safety filter") is True
+    assert is_safety_error("Quota exceeded") is False
+    assert is_safety_error("") is False
+    assert is_safety_error(None) is False
+
+
 def test_session_state_reset():
     session = AgySession()
     session.set_conversation("conv-12345")
@@ -64,6 +78,7 @@ def test_session_state_reset():
     session.reset_session()
     assert session.has_active_session is False
     assert session.active_conversation_id is None
+    assert session._needs_restart is True
     assert session.session_total_tokens == 0
     assert session.session_turns == 0
 

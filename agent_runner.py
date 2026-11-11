@@ -33,7 +33,7 @@ from config import (
 from memory_manager import get_relevant_context, auto_extract_and_store_facts
 from resource_governor import governor
 from agent_registry import agent_registry
-from agy_session import agy_session, session_pool, is_quota_error, is_connection_error
+from agy_session import agy_session, session_pool, is_quota_error, is_connection_error, is_safety_error
 from i18n import t
 
 logger = logging.getLogger("agent_runner")
@@ -482,6 +482,14 @@ class AgentRunner:
         agy_session.reset_session()
         logger.info("Agent conversation session reset.")
 
+    async def reset_session_async(self) -> None:
+        agy_session.reset_session()
+        try:
+            await agy_session.stop()
+        except Exception:
+            pass
+        logger.info("Agent conversation session reset and process stopped.")
+
     def set_conversation(self, conversation_id: str) -> None:
         agy_session.set_conversation(conversation_id)
 
@@ -672,6 +680,36 @@ class AgentRunner:
 
                 if "Execution stopped by user" in response_text or "interrompue par l'utilisateur" in response_text or not self._is_running_prompt:
                     return (response_text, False)
+
+                if not is_quota and is_safety_error(response_text):
+                    logger.warning(
+                        f"Safety filter false positive on model '{current_model}': {response_text[:100]}. "
+                        "Purging tainted session."
+                    )
+                    await target_session.abort()
+                    target_session.reset_session()
+                    last_error = response_text
+                    if model_idx < len(candidate_models[:6]) - 1:
+                        logger.info("Attempting next candidate model after safety block...")
+                        continue
+
+                    from config import get_user_language
+                    user_lang = get_user_language(user_id) if user_id else "fr"
+                    if user_lang == "fr":
+                        safety_msg = (
+                            "🛡️ <b>Réponse filtrée par les règles de sécurité Google</b>\n\n"
+                            "Le modèle n'a pas pu formuler sa réponse car les filtres de modération automatisés de Google "
+                            "ont bloqué la génération (faux positif fréquent lors de transcriptions phonétiques ou de langues comme le khmer).\n\n"
+                            "🧹 <i>La conversation a été automatiquement nettoyée pour éviter tout blocage. Vous pouvez continuer ou reformuler directement votre demande.</i>"
+                        )
+                    else:
+                        safety_msg = (
+                            "🛡️ <b>Response Filtered by Google Safety Settings</b>\n\n"
+                            "The model could not output its response because Google's automated content filters "
+                            "blocked generation (a known false positive with phonetic transcriptions and regional languages).\n\n"
+                            "🧹 <i>The session has been automatically purged. You can continue chatting or rephrase your request immediately.</i>"
+                        )
+                    return (safety_msg, False)
 
                 # Automatic recovery for transient connection / stream idle timeouts
                 if not is_quota and is_connection_error(response_text):

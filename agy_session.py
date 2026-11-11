@@ -86,6 +86,28 @@ CONNECTION_ERROR_KEYWORDS = [
     "stream failed",
 ]
 
+SAFETY_ERROR_KEYWORDS = [
+    "blocked by content safety filters",
+    "content safety filters",
+    "prohibited use policy",
+    "prohibited content",
+    "sensitive words that violate",
+    "sensitive words",
+    "safety filter",
+    "safety settings",
+    "finish_reason: safety",
+    "finishreason: safety",
+    "candidate was blocked",
+    "safety policy",
+]
+
+
+def is_safety_error(error_msg: str) -> bool:
+    if not error_msg:
+        return False
+    lower = str(error_msg).lower()
+    return any(k in lower for k in SAFETY_ERROR_KEYWORDS)
+
 
 def is_connection_error(error_msg: str) -> bool:
     if not error_msg:
@@ -130,6 +152,7 @@ class AgySession:
         self._current_workspace: Path = default_workspace or config.WORKSPACE_DIR
         self._active_conversation_id: Optional[str] = None
         self._has_active_session: bool = False
+        self._needs_restart: bool = False
 
         # Session metrics
         self.last_usage: Dict[str, Any] = {}
@@ -171,15 +194,21 @@ class AgySession:
     def reset_session(self) -> None:
         self._has_active_session = False
         self._active_conversation_id = None
+        self._needs_restart = True
         self.last_usage = {}
         self.session_total_tokens = 0
         self.session_turns = 0
-        logger.info("Agy persistent session reset.")
+        logger.info(f"Agy persistent session ({self.session_key}) reset.")
+
+    async def reset(self) -> None:
+        """Reset session state and cleanly terminate running agy subprocess."""
+        self.reset_session()
+        await self._stop_process()
 
     async def ensure_warm_process(self, settings: dict, force_restart: bool = False) -> bool:
         """
         Start or verify the warm `agy` background process.
-        Restarts if configuration changed (e.g. model or mode).
+        Restarts if configuration changed (e.g. model or mode) or reset requested.
         """
         model = settings.get("model", "gemini-3.8-flash-low")
         if model == "auto" or not model:
@@ -190,6 +219,7 @@ class AgySession:
 
         needs_restart = (
             force_restart
+            or self._needs_restart
             or not self.is_alive
             or (self._current_model and self._current_model != model)
             or (self._current_mode and self._current_mode != mode)
@@ -357,6 +387,7 @@ class AgySession:
 
     async def _stop_process(self):
         """Terminate active agy process cleanly."""
+        self._needs_restart = False
         for t in (self._stdout_reader_task, self._stderr_reader_task):
             if t and not t.done():
                 t.cancel()
@@ -665,6 +696,17 @@ class AgySession:
                                     self._has_active_session = False
                                     return (accumulated or "✅ Action completed with deliverable files sent.", True, False)
 
+                                if is_safety_error(err):
+                                    logger.warning(
+                                        f"Content safety filter triggered: {err[:80]}. "
+                                        "Stopping tainted agy process to clear corrupted trajectory..."
+                                    )
+                                    await self._stop_process()
+                                    self._has_active_session = False
+                                    self._active_conversation_id = None
+                                    self._needs_restart = True
+                                    return (err, False, False)
+
                                 if is_connection_error(err):
                                     logger.warning(f"Connection dropped / stream idle timeout detected: {err}. Stopping stale process...")
                                     await self._stop_process()
@@ -698,6 +740,13 @@ class AgySession:
                 if is_quota_error(err_msg):
                     self._active_conversation_id = None
                     return (err_msg, False, True)
+                if is_safety_error(err_msg):
+                    logger.warning(f"Safety error detected in stderr: {err_msg[:80]}. Stopping process...")
+                    await self._stop_process()
+                    self._has_active_session = False
+                    self._active_conversation_id = None
+                    self._needs_restart = True
+                    return (err_msg, False, False)
                 if is_connection_error(err_msg):
                     logger.warning(f"Connection dropped in stderr: {err_msg}. Stopping stale process...")
                     await self._stop_process()
@@ -788,6 +837,12 @@ class AgySessionPool:
                 await s.abort()
             except Exception:
                 pass
+
+    async def reset_session(self, session_key: str):
+        if session_key in self._sessions:
+            s = self._sessions[session_key]
+            s.reset_session()
+            await s._stop_process()
 
     async def close_all(self):
         for s in list(self._sessions.values()):

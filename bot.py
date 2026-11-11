@@ -315,6 +315,7 @@ def get_turn_lock(key: str) -> asyncio.Lock:
 turn_execution_lock = get_turn_lock("global_admin")
 _active_chat_turns: Dict[int, Dict[str, Any]] = {}
 _queued_abort_chats: set = set()
+_chat_abort_time: Dict[int, float] = {}
 _recently_flushed_media_groups: Dict[str, float] = {}
 _recently_flushed_doc_groups: Dict[str, float] = {}
 
@@ -1900,7 +1901,7 @@ async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
     turn_info = _active_chat_turns.get(chat_id)
-    _queued_abort_chats.add(chat_id)
+    _chat_abort_time[chat_id] = time.monotonic()
     if turn_info:
         turn_info["aborted"] = True
         live_msg = turn_info.get("live_msg")
@@ -1919,23 +1920,33 @@ async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
 
-    # Stop user warm session if running
-    u_ws = auth_mgr.get_user_workspace(uid)
-    pool_session = session_pool.get_session(str(uid), u_ws)
-    if pool_session and pool_session.is_running:
+    # Stop user warm session if running (both isolated and default session keys)
+    user_info = auth_mgr.get_user(uid)
+    iso_cfg = user_info.get("isolation", {}) if user_info else {}
+    is_isolated = bool(iso_cfg.get("mode") == "isolated" or iso_cfg.get("isolated_workspace", False))
+    session_key = f"user_{uid}" if is_isolated else "default"
+
+    target_sess = session_pool.get_session(session_key)
+    target_sess.reset_session()
+    try:
+        await target_sess.stop()
+    except Exception:
+        pass
+
+    if session_key != "default":
+        agy_session.reset_session()
         try:
-            await pool_session.stop()
+            await agy_session.stop()
         except Exception:
             pass
 
-    if is_admin(uid, user):
-        if runner.is_running:
-            try:
-                await runner.abort()
-            except Exception as e:
-                logger.warning(f"Error aborting runner during /clear: {e}")
-        runner.reset_session()
-        pending_admin_input.pop(uid, None)
+    if runner.is_running:
+        try:
+            await runner.abort()
+        except Exception as e:
+            logger.warning(f"Error aborting runner during /clear: {e}")
+    runner.reset_session()
+    pending_admin_input.pop(uid, None)
 
     reset_ack = (
         "🧹 <b>Session réinitialisée !</b> Une nouvelle conversation vierge est prête."
@@ -1958,7 +1969,7 @@ async def cmd_abort(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
     turn_info = _active_chat_turns.get(chat_id)
-    _queued_abort_chats.add(chat_id)
+    _chat_abort_time[chat_id] = time.monotonic()
 
     aborted_anything = False
     if turn_info:
@@ -2074,7 +2085,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception:
                 pass
         turn_info = _active_chat_turns.get(chat_id)
-        _queued_abort_chats.add(chat_id)
+        _chat_abort_time[chat_id] = time.monotonic()
         user_lang = get_user_language(uid)
 
         aborted = False
@@ -5213,6 +5224,7 @@ async def _process_user_turn(
 
     # Use granular per-chat turn lock for true concurrency across different users/bots
     chat_turn_lock = get_turn_lock(str(chat_id))
+    msg_enqueued_at = time.monotonic()
 
     # If another turn is currently running for this chat, notify user it's queued
     queued_notice_msg = None
@@ -5243,10 +5255,10 @@ async def _process_user_turn(
             except Exception:
                 pass
 
-        # If user requested abort while this turn was waiting in queue, drop it immediately
-        if chat_id in _queued_abort_chats:
-            _queued_abort_chats.discard(chat_id)
-            logger.info(f"Skipping queued turn for chat {chat_id} because abort was requested.")
+        # If user requested abort or clear while this turn was waiting in queue, drop it immediately
+        abort_time = _chat_abort_time.get(chat_id, 0.0)
+        if abort_time and msg_enqueued_at <= abort_time:
+            logger.info(f"Skipping queued turn for chat {chat_id} because abort/clear was requested before execution.")
             return
 
         chat_transient_file = TEMP_DIR / f"tg_transient_{chat_id}.json"
