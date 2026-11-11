@@ -538,14 +538,15 @@ class AgySession:
                                     return (f"⏱️ File tool timed out ({active_tool_name} > {int(file_limit)}s). Turn aborted.", False, False)
                             else:
                                 # Active execution commands (run_command, etc.):
-                                # Sane ceiling of 300s (5 min) to prevent runaway commands or interactive prompts from blocking the bot
-                                cmd_limit = min(timeout, 300.0) if timeout > 0 else 300.0
-                                if tool_elapsed >= cmd_limit:
+                                # Respect the configured turn timeout (from /settings). If timeout is 0 (infinite), allow unlimited execution.
+                                cmd_limit = float(timeout) if timeout > 0 else 0.0
+                                if cmd_limit > 0 and tool_elapsed >= cmd_limit:
                                     logger.warning(f"Command '{active_tool_name}' hanging for {tool_elapsed:.1f}s (> {cmd_limit}s). Aborting turn...")
                                     await self.abort()
+                                    limit_str = f"{int(cmd_limit // 3600)}h" if cmd_limit >= 3600 else f"{int(cmd_limit)}s"
                                     return (
-                                        f"⏱️ Tool execution timed out ({active_tool_name} > {int(cmd_limit)}s). "
-                                        "Command aborted to protect host system resources. Please use targeted paths instead of blind recursive scans.",
+                                        f"⏱️ Tool execution timed out ({active_tool_name} > {limit_str}). "
+                                        "Command aborted to protect host system resources.",
                                         False,
                                         False,
                                     )
