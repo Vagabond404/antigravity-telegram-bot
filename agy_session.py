@@ -425,6 +425,10 @@ class AgySession:
             except Exception as e:
                 logger.debug(f"Process termination detail: {e}")
 
+    async def stop(self):
+        """Terminate active agy subprocess cleanly."""
+        await self._stop_process()
+
     async def abort(self) -> bool:
         """Interrupt and abort current execution immediately."""
         self._is_aborted = True
