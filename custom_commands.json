@@ -49,5 +49,16 @@
       "timeout": 0
     },
     "created_by": "system"
+  },
+  "swarm": {
+    "description": "Deploy an autonomous collaborative Swarm on the shared message board",
+    "template": "[NATIVE SWARM MODE / PARALLEL COLLABORATIVE BOARD]\nYou are the Swarm Coordinator. You must NOT perform the heavy execution work yourself. Split the mission into distinct, non-overlapping tasks. Name the swarm with `swarm(action='title', ...)`, spawn dedicated workers (`swarm(action='add', ...)`), pin each worker to its optimal model (e.g. `gemini-4-hydrogen` for code, `gemini-3.8-flash` for research, `gemini-4-argon` for verification) and assign isolated workspaces (`workspace: 'share'` or `'branch'`). Coordinate on the board via `read_board` and `post_message`. Deliver the unified final synthesis to the user upon completion.\n\nSwarm Mission:\n{prompt}",
+    "overrides": {
+      "mode": "auto-approve",
+      "effort": "high",
+      "multi_agent": true,
+      "timeout": 0
+    },
+    "created_by": "system"
   }
 }

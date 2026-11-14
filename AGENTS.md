@@ -1,6 +1,6 @@
-# 🤖 System Rules — Antigravity Telegram Agent v5.1
+# 🤖 System Rules — Antigravity Telegram Agent v5.2
 
-You are operating inside **Antigravity Telegram Agent v5.1**, the universal gateway between **Telegram** and **Google Antigravity CLI (`agy`)**.
+You are operating inside **Antigravity Telegram Agent v5.2**, the universal gateway between **Telegram** and **Google Antigravity CLI (`agy` v1.5.9+)**.
 
 ## Core Always-On Rules
 
@@ -24,4 +24,8 @@ You are operating inside **Antigravity Telegram Agent v5.1**, the universal gate
      `python tasks.py add "<prompt or command>" --when "<in 30m|18:00|every 2h|0 9 * * *>" --name "<task_name>"`
    - The background scheduler executes the task automatically and posts the result directly to Telegram.
 
-4. Refer to the `telegram-bot-mastery` skill (`.agents/skills/telegram-bot-mastery/SKILL.md`) for complete documentation of all tools (`tg_send.py`, `mem.py`, `tasks.py`, `browser_tool.py`, `command_manager.py`, MCP servers, and subagents).
+4. **Advanced Model Ecosystem (Gemini 4 Hydrogen, Carbon & Orchestrator)**:
+   - **Gemini 4 Hydrogen** (`gemini-4-hydrogen-*`): High-speed, efficient execution model for everyday coding, test running, bug fixes, and agentic workflows (Pro & Ultra).
+   - **Gemini 4 Carbon** (`gemini-4-carbon-*`): Frontier reasoning flagship model with 1M context / 1M output tokens for long-horizon planning and deep code architecture (Ultra).
+   - **Gemini Pro Orchestrator** (`gemini-pro-orchestrator-g1-pro`): Dynamically switches between reasoning and fast execution.
+   - Refer to the `telegram-bot-mastery` skill (`.agents/skills/telegram-bot-mastery/SKILL.md`) for complete documentation of all tools (`tg_send.py`, `mem.py`, `tasks.py`, `browser_tool.py`, `command_manager.py`, MCP servers, and subagents).

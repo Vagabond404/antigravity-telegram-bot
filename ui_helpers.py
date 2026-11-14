@@ -723,30 +723,113 @@ def get_mode_selection_keyboard(current_mode: str, user_lang: str = "en") -> Inl
     return InlineKeyboardMarkup(keyboard)
 
 
+def to_base_model_id(model_id: str) -> str:
+    """Normalize any full model ID (with effort suffix) to its clean base model ID."""
+    m = (model_id or "").strip()
+    if m in ("auto", "gemini-pro-orchestrator-g1-pro"):
+        return m
+    for suffix in ("-xhigh", "-high", "-medium", "-low", "-max"):
+        if m.endswith(suffix):
+            return m[:-len(suffix)]
+    return m
+
+
+BASE_MODEL_LABELS: Dict[str, Tuple[str, str]] = {
+    "auto": ("🤖 Auto (Routage Intelligent Tâche & Quota)", "🤖 Auto (Smart Task & Quota Routing)"),
+    "gemini-pro-orchestrator-g1-pro": ("🎛️ Gemini Pro Orchestrator (Argon) [Pro/Ultra]", "🎛️ Gemini Pro Orchestrator (Argon) [Pro/Ultra]"),
+    "gemini-4-hydrogen": ("🚀 Gemini 4 Hydrogen [Pro/Ultra]", "🚀 Gemini 4 Hydrogen [Pro/Ultra]"),
+    "gemini-4-carbon": ("💎 Gemini 4 Carbon [Ultra]", "💎 Gemini 4 Carbon [Ultra]"),
+    "gemini-4-argon": ("🧠 Gemini 4 Argon [Pro/Ultra]", "🧠 Gemini 4 Argon [Pro/Ultra]"),
+    "gemini-3.8-flash": ("⚡ Gemini 3.8 Flash", "⚡ Gemini 3.8 Flash"),
+    "claude-sonnet-5-5": ("📜 Claude Sonnet 5.5 [Pro/Ultra]", "📜 Claude Sonnet 5.5 [Pro/Ultra]"),
+    "claude-opus-5-5": ("👑 Claude Opus 5.5 [Pro/Ultra]", "👑 Claude Opus 5.5 [Pro/Ultra]"),
+    "gpt-oss-120b": ("🌐 GPT-OSS 120B", "🌐 GPT-OSS 120B"),
+}
+
+MODEL_SUPPORTED_EFFORTS: Dict[str, List[str]] = {
+    "gemini-4-carbon": ["auto", "low", "medium", "high", "xhigh", "max"],
+    "gemini-4-hydrogen": ["auto", "low", "medium", "high", "xhigh"],
+    "gemini-4-argon": ["auto", "low", "medium", "high"],
+    "gemini-3.8-flash": ["auto", "low", "medium", "high"],
+    "claude-sonnet-5-5": ["auto", "low", "medium", "high"],
+    "claude-opus-5-5": ["auto", "low", "medium", "high"],
+    "gemini-pro-orchestrator-g1-pro": ["auto", "medium", "high"],
+    "gpt-oss-120b": ["medium"],
+    "auto": ["auto", "low", "medium", "high", "xhigh", "max"],
+}
+
+
+def get_supported_effort_levels(model_name: str) -> List[str]:
+    """Return the list of effort levels supported by the given model."""
+    base_id = to_base_model_id(model_name).lower()
+    for k, v in MODEL_SUPPORTED_EFFORTS.items():
+        if k in base_id:
+            return v
+    return ["auto", "low", "medium", "high", "xhigh", "max"]
+
+
 def get_model_selection_keyboard(
     current_model: str,
     available_models: Optional[List[Tuple[str, str]]] = None,
     user_lang: str = "en",
+    account_tier: str = "auto",
 ) -> InlineKeyboardMarkup:
     from agent_runner import get_cached_models
     models = available_models or get_cached_models()
+    is_fr = (user_lang == "fr")
+    tier = (account_tier or "auto").lower()
+
+    # Deduplicate models by base model ID to eliminate duplicate entries for low/medium/high/xhigh
+    seen_bases = set()
+    deduped_models: List[Tuple[str, str]] = []
+
+    for mod_val, label in models:
+        base_id = to_base_model_id(mod_val)
+        if base_id in seen_bases:
+            continue
+        seen_bases.add(base_id)
+
+        if base_id in BASE_MODEL_LABELS:
+            clean_label = BASE_MODEL_LABELS[base_id][0] if is_fr else BASE_MODEL_LABELS[base_id][1]
+        else:
+            clean_label = label
+            for sfx in ("(High)", "(Medium)", "(Low)", "(XHigh)", "(Max)"):
+                clean_label = clean_label.replace(sfx, "").strip()
+
+        # Add tier lock tags for models that require a higher plan
+        is_locked = False
+        lock_suffix = ""
+        if tier == "free" and any(k in base_id for k in ("carbon", "argon", "hydrogen", "orchestrator", "claude")):
+            is_locked = True
+            lock_suffix = " 🔒 [Pro]" if is_fr else " 🔒 [Pro]"
+        elif tier == "pro" and "carbon" in base_id:
+            is_locked = True
+            lock_suffix = " 🔒 [Ultra]" if is_fr else " 🔒 [Ultra]"
+
+        if is_locked:
+            # Strip existing tier tags and append lock
+            for tag in ("[Pro/Ultra]", "[Ultra]", "[Pro]"):
+                clean_label = clean_label.replace(tag, "").strip()
+            clean_label = f"{clean_label}{lock_suffix}"
+
+        deduped_models.append((base_id, clean_label))
 
     keyboard = []
-    for mod_val, label in models:
-        check = " ✅" if mod_val == current_model else ""
-        display_btn = f"{label} ({mod_val}){check}" if label != mod_val else f"{mod_val}{check}"
-        if len(display_btn) > 58:
-            display_btn = f"{label[:45]}{check}"
+    curr_base = to_base_model_id(current_model)
+    for mod_val, label in deduped_models:
+        check = " ✅" if (mod_val == current_model or mod_val == curr_base) else ""
+        display_btn = f"{label}{check}"
         keyboard.append([InlineKeyboardButton(display_btn, callback_data=f"set_model:{mod_val}")])
 
-    is_fr = (user_lang == "fr")
     if is_fr:
+        keyboard.append([InlineKeyboardButton("💡 Régler l'Effort de Réflexion (/effort)", callback_data="menu_effort")])
         keyboard.append([InlineKeyboardButton("📊 Voir Quotas & Utilisation (/usage)", callback_data="cmd_usage")])
-        keyboard.append([InlineKeyboardButton("🔄 Rafraîchir depuis Antigravity CLI (agy models)", callback_data="refresh_models")])
+        keyboard.append([InlineKeyboardButton("🔄 Rafraîchir depuis Antigravity CLI", callback_data="refresh_models")])
         keyboard.append([InlineKeyboardButton("⬅️ Retour au Centre de Contrôle", callback_data="menu_main")])
     else:
+        keyboard.append([InlineKeyboardButton("💡 Adjust Reasoning Effort (/effort)", callback_data="menu_effort")])
         keyboard.append([InlineKeyboardButton("📊 View Quotas & Usage (/usage)", callback_data="cmd_usage")])
-        keyboard.append([InlineKeyboardButton("🔄 Refresh from Antigravity CLI (agy models)", callback_data="refresh_models")])
+        keyboard.append([InlineKeyboardButton("🔄 Refresh from Antigravity CLI", callback_data="refresh_models")])
         keyboard.append([InlineKeyboardButton("⬅️ Back to Control Center", callback_data="menu_main")])
     return InlineKeyboardMarkup(keyboard)
 
@@ -777,33 +860,40 @@ def get_usage_keyboard(user_lang: str = "en") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-
-def get_effort_selection_keyboard(current_effort: str, user_lang: str = "en") -> InlineKeyboardMarkup:
+def get_effort_selection_keyboard(
+    current_effort: str,
+    current_model: str = "auto",
+    user_lang: str = "en",
+) -> InlineKeyboardMarkup:
     is_fr = (user_lang == "fr")
-    if is_fr:
-        efforts = [
-            ("auto", "🤖 Auto (Adapté automatiquement au modèle)"),
-            ("low", "⚡ Rapide (low — direct & ultra-réactif)"),
-            ("medium", "⚖️ Équilibré (medium — analyse standard)"),
-            ("high", "🧠 Profond (high — réflexion avancée)"),
-            ("xhigh", "🔥 Très Profond (xhigh — raisonnement intensif)"),
-            ("max", "🚀 Maximum (max — capacité de réflexion maximale)"),
-        ]
-        btn_back = "⬅️ Retour au Centre de Contrôle"
-    else:
-        efforts = [
-            ("auto", "🤖 Auto (Automatically adapted to model)"),
-            ("low", "⚡ Fast (low — fast & responsive)"),
-            ("medium", "⚖️ Balanced (medium — standard reasoning)"),
-            ("high", "🧠 Deep (high — advanced reasoning)"),
-            ("xhigh", "🔥 Very Deep (xhigh — intensive reasoning)"),
-            ("max", "🚀 Maximum (max — highest reasoning effort)"),
-        ]
-        btn_back = "⬅️ Back to Control Center"
+    all_efforts_fr = [
+        ("auto", "🤖 Auto (Adapté dynamiquement au modèle)"),
+        ("low", "⚡ Rapide (low — direct & ultra-réactif)"),
+        ("medium", "⚖️ Équilibré (medium — analyse standard)"),
+        ("high", "🧠 Profond (high — réflexion avancée)"),
+        ("xhigh", "🔥 Très Profond (xhigh — raisonnement intensif)"),
+        ("max", "🚀 Maximum (max — réflexion frontière)"),
+    ]
+    all_efforts_en = [
+        ("auto", "🤖 Auto (Dynamically adapted to model)"),
+        ("low", "⚡ Fast (low — fast & responsive)"),
+        ("medium", "⚖️ Balanced (medium — standard reasoning)"),
+        ("high", "🧠 Deep (high — advanced reasoning)"),
+        ("xhigh", "🔥 Very Deep (xhigh — intensive reasoning)"),
+        ("max", "🚀 Maximum (max — frontier reasoning)"),
+    ]
+    supported = get_supported_effort_levels(current_model)
+    raw_list = all_efforts_fr if is_fr else all_efforts_en
+    filtered_efforts = [item for item in raw_list if item[0] in supported]
+
     keyboard = []
-    for eff_val, label in efforts:
+    for eff_val, label in filtered_efforts:
         check = " ✅" if eff_val == current_effort else ""
         keyboard.append([InlineKeyboardButton(f"{label}{check}", callback_data=f"set_effort:{eff_val}")])
+
+    btn_models = "🎛️ Choisir un Autre Modèle (/model)" if is_fr else "🎛️ Switch AI Model (/model)"
+    btn_back = "⬅️ Retour au Centre de Contrôle" if is_fr else "⬅️ Back to Control Center"
+    keyboard.append([InlineKeyboardButton(btn_models, callback_data="menu_models")])
     keyboard.append([InlineKeyboardButton(btn_back, callback_data="menu_main")])
     return InlineKeyboardMarkup(keyboard)
 

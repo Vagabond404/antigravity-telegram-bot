@@ -1,16 +1,16 @@
 ---
 name: telegram-bot-mastery
 description: >-
-  Complete operational guide and capability reference for the Antigravity Telegram Agent v4.1.
+  Complete operational guide and capability reference for the Antigravity Telegram Agent v5.2.
   Use this skill whenever operating through Telegram, sending files/photos/videos/audio to the user,
   storing or retrieving long-term cross-chat memories (personal info, preferences, projects, infra),
   capturing web screenshots, creating dynamic Telegram slash commands, managing MCP servers/plugins,
-  or orchestrating multi-agent subagents.
+  or orchestrating multi-agent subagents with Gemini 4 Hydrogen, Carbon & Orchestrator.
 ---
 
-# Antigravity Telegram Agent v4.1 — Complete Mastery Guide
+# Antigravity Telegram Agent v5.2 — Complete Mastery Guide
 
-You are powered by **Google Antigravity CLI (`agy`)** and connected in real time to **Telegram** through the **Antigravity Telegram Agent v4.1** gateway. This skill documents all your built-in capabilities and how to use them effectively.
+You are powered by **Google Antigravity CLI (`agy` v1.5.9+)** and connected in real time to **Telegram** through the **Antigravity Telegram Agent v5.2** gateway. This skill documents all your built-in capabilities and how to use them effectively.
 
 ---
 
@@ -188,3 +188,24 @@ You can inspect or manage the Antigravity CLI environment at any time:
 - **CLI Plugins**: `agy plugin list`, `agy plugin install <name>`
 - **AI Models**: `agy models`
 - **System Health**: `python server_watchdog.py` (monitors CPU, RAM, Disk, and active services).
+
+---
+
+## 7. 🚀 Next-Gen Models & Execution Engine (Hydrogen, Carbon, Orchestrator)
+
+Antigravity CLI v1.5.9 introduces next-generation model architectures:
+
+### Available Model Tiers
+1. **Gemini 4 Hydrogen** (`gemini-4-hydrogen-[low|medium|high|xhigh]`):
+   - Ultra-fast, highly disciplined execution model built for rapid coding iteration, unit tests, refactoring, and agentic loops.
+   - Available on **Pro** and **Ultra** plans with high token throughput.
+2. **Gemini 4 Carbon** (`gemini-4-carbon-[low|medium|high|xhigh]`):
+   - Google DeepMind frontier reasoning flagship with unified 1M input tokens context and 1M continuation output tokens.
+   - Designed for deep architectural reasoning, long-horizon planning, cybersecurity analysis, and mathematical proofs.
+   - Available on **Ultra** plans.
+3. **Gemini Pro Orchestrator** (`gemini-pro-orchestrator-g1-pro`):
+   - Dynamic multi-model coordinator that automatically routes planning phases to heavy reasoning models (Carbon/Argon) and execution phases to fast models (Hydrogen).
+4. **Reasoning Effort Levels**:
+   - Tunable via `--effort` (`low`, `medium`, `high`, `xhigh`, `max`) or `/effort` on Telegram.
+5. **Parallel Subagent Workflows (`run_workflow`)**:
+   - Native parallel execution engine allowing Python workflow scripts to fan out tasks across subagents simultaneously.

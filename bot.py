@@ -1178,7 +1178,12 @@ async def cmd_models(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     await update.message.reply_text(
         msg_text,
-        reply_markup=get_model_selection_keyboard(settings.get("model", ""), models, user_lang=user_lang),
+        reply_markup=get_model_selection_keyboard(
+            settings.get("model", ""),
+            models,
+            user_lang=user_lang,
+            account_tier=settings.get("account_tier", "auto"),
+        ),
         parse_mode=PM,
     )
 
@@ -1338,19 +1343,25 @@ async def cmd_effort(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(t("cmd_admin_only", user_id=uid))
         return
     user_lang = get_user_language(uid)
+    curr_mod = settings.get("model", "auto")
+    curr_eff = settings.get("effort", "auto")
     if user_lang == "fr":
         msg_text = (
-            f"💡 <b>Niveau d'Effort Actif :</b> <code>{h(settings.get('effort', 'auto'))}</code>\n\n"
-            "Choisissez la profondeur de réflexion d'Antigravity CLI :"
+            f"💡 <b>Niveau d'Effort de Réflexion (<code>--effort</code>) :</b>\n"
+            f"🧠 <b>Modèle Actif :</b> <code>{h(curr_mod)}</code>\n"
+            f"⚙️ <b>Effort Actuel :</b> <code>{h(curr_eff)}</code>\n\n"
+            "Choisissez la profondeur de réflexion adaptée à ce modèle :"
         )
     else:
         msg_text = (
-            f"💡 <b>Active Effort Level:</b> <code>{h(settings.get('effort', 'auto'))}</code>\n\n"
-            "Choose the reasoning depth for Antigravity CLI:"
+            f"💡 <b>Reasoning Effort Level (<code>--effort</code>):</b>\n"
+            f"🧠 <b>Active Model:</b> <code>{h(curr_mod)}</code>\n"
+            f"⚙️ <b>Current Effort:</b> <code>{h(curr_eff)}</code>\n\n"
+            "Choose the thinking depth supported by this model:"
         )
     await update.message.reply_text(
         msg_text,
-        reply_markup=get_effort_selection_keyboard(settings.get("effort", "auto"), user_lang=user_lang),
+        reply_markup=get_effort_selection_keyboard(curr_eff, current_model=curr_mod, user_lang=user_lang),
         parse_mode=PM,
     )
 
@@ -1656,6 +1667,27 @@ async def dispatch_custom_command(
 
     enhanced_prompt, overrides = command_mgr.format_command_prompt(cmd_name, user_args)
     effective_settings = {**settings, **overrides}
+
+    # Strict Tier Enforcement: Free plan cannot run Swarm or multi-agent teams
+    account_tier = effective_settings.get("account_tier", "auto").lower()
+    if account_tier == "free" and effective_settings.get("multi_agent"):
+        user_lang = get_user_language(update.effective_user.id if update.effective_user else 0)
+        is_fr = (user_lang == "fr")
+        if is_fr:
+            tier_notice = (
+                "⚠️ <b>Forfait Gratuit (Free Tier) :</b>\n"
+                "Les fonctionnalités <b>Multi-Agents / Swarm</b> nécessitent un forfait <b>Pro ou Ultra</b>.\n"
+                "La mission est redirigée en mode agent individuel ultra-rapide (Gemini Flash).\n\n"
+            )
+        else:
+            tier_notice = (
+                "⚠️ <b>Free Tier Notice:</b>\n"
+                "<b>Multi-Agent / Swarm</b> features require a <b>Google Pro or Ultra</b> plan.\n"
+                "Your mission will execute in high-speed single-agent mode (Gemini Flash).\n\n"
+            )
+        effective_settings["multi_agent"] = False
+        effective_settings["model"] = "gemini-3.8-flash"
+        await update.message.reply_text(tier_notice, parse_mode=PM)
 
     header = (
         f"🕹️ <b>Commande :</b> <code>/{h(cmd_name)}</code>\n"
@@ -2666,7 +2698,12 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await safe_edit_message(
             query.message,
             text,
-            reply_markup=get_model_selection_keyboard(settings.get("model", ""), models, user_lang=user_lang),
+            reply_markup=get_model_selection_keyboard(
+                settings.get("model", ""),
+                models,
+                user_lang=user_lang,
+                account_tier=settings.get("account_tier", "auto"),
+            ),
         )
         return
 
@@ -2685,7 +2722,12 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await safe_edit_message(
             query.message,
             text,
-            reply_markup=get_model_selection_keyboard(settings.get("model", ""), models, user_lang=user_lang),
+            reply_markup=get_model_selection_keyboard(
+                settings.get("model", ""),
+                models,
+                user_lang=user_lang,
+                account_tier=settings.get("account_tier", "auto"),
+            ),
         )
         return
 
@@ -2693,17 +2735,23 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer()
         user_lang = get_user_language(uid)
         is_fr = (user_lang == "fr")
+        curr_mod = settings.get("model", "auto")
+        curr_eff = settings.get("effort", "auto")
         text = (
-            "💡 <b>Niveau d'Effort de Réflexion (<code>--effort</code>) :</b>\n\n"
-            "Contrôle le budget de réflexion interne du modèle avant de répondre."
+            f"💡 <b>Niveau d'Effort de Réflexion (<code>--effort</code>) :</b>\n\n"
+            f"🧠 <b>Modèle Actif :</b> <code>{h(curr_mod)}</code>\n"
+            f"⚙️ <b>Effort Actuel :</b> <code>{h(curr_eff)}</code>\n\n"
+            "Contrôle le budget de réflexion interne du modèle avant de répondre :"
             if is_fr else
-            "💡 <b>Reasoning Effort Level (<code>--effort</code>):</b>\n\n"
-            "Controls the model's internal thinking budget before replying."
+            f"💡 <b>Reasoning Effort Level (<code>--effort</code>):</b>\n\n"
+            f"🧠 <b>Active Model:</b> <code>{h(curr_mod)}</code>\n"
+            f"⚙️ <b>Current Effort:</b> <code>{h(curr_eff)}</code>\n\n"
+            "Controls the model's internal thinking budget before replying:"
         )
         await safe_edit_message(
             query.message,
             text,
-            reply_markup=get_effort_selection_keyboard(settings.get("effort", "auto"), user_lang=user_lang),
+            reply_markup=get_effort_selection_keyboard(curr_eff, current_model=curr_mod, user_lang=user_lang),
         )
         return
 
@@ -3268,11 +3316,41 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     if data.startswith("set_model:"):
-        settings["model"] = data.split(":", 1)[1]
+        new_model = data.split(":", 1)[1]
+        account_tier = settings.get("account_tier", "auto").lower()
+        user_lang = get_user_language(uid)
+        is_fr = (user_lang == "fr")
+
+        # Tier Enforcement: Free Tier cannot select Pro/Ultra exclusive models
+        if account_tier == "free" and any(k in new_model for k in ("carbon", "argon", "hydrogen", "orchestrator", "claude")):
+            err_alert = (
+                "❌ Modèle Pro/Ultra : Le forfait Gratuit (Free) n'a pas accès à ce modèle. Passez sur Pro ou Ultra dans /settings."
+                if is_fr else
+                "❌ Pro/Ultra Model: The Free tier does not have access to this model. Upgrade to Pro or Ultra in /settings."
+            )
+            await query.answer(err_alert, show_alert=True)
+            return
+
+        # Tier Enforcement: Pro Tier cannot select Gemini 4 Carbon (Ultra Only)
+        if account_tier == "pro" and "carbon" in new_model:
+            err_alert = (
+                "❌ Modèle Ultra : Gemini 4 Carbon (1M tokens) est réservé exclusivement au forfait Ultra / Enterprise."
+                if is_fr else
+                "❌ Ultra Model: Gemini 4 Carbon (1M tokens) is strictly reserved for Ultra / Enterprise accounts."
+            )
+            await query.answer(err_alert, show_alert=True)
+            return
+
+        settings["model"] = new_model
+        # Automatically validate and clamp effort if not supported by the new model
+        current_effort = settings.get("effort", "auto")
+        from ui_helpers import get_supported_effort_levels
+        supported = get_supported_effort_levels(new_model)
+        if current_effort not in supported:
+            settings["effort"] = "auto"
         save_settings(settings)
         runner.reset_session()
-        user_lang = get_user_language(uid)
-        await query.answer(f"Model: {settings['model']}")
+        await query.answer(f"Modèle : {settings['model']}" if is_fr else f"Model: {settings['model']}")
         await safe_edit_message(
             query.message,
             format_settings_summary_html(settings, user_lang=user_lang),

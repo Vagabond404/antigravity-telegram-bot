@@ -54,23 +54,23 @@ SAFE_TOOLS_WHITELIST = {
 DEFAULT_SEED_AGENTS: List[Dict[str, Any]] = [
     {
         "name": "recherche",
-        "display_name": "🔍 Recherche & Documentation",
-        "description": "Spécialiste de la recherche web, de l'analyse documentaire et de la synthèse d'informations fiables.",
-        "model": "gemini-3.8-flash-low",
+        "display_name": "🔍 Research & Documentation",
+        "description": "Expert in web exploration, document analysis, and factual synthesis.",
+        "model": "gemini-3.8-flash",
         "tools": ["search_web", "read_url_content", "view_file"],
         "enabled": True,
         "instructions": (
-            "Tu es un agent d'exploration et de recherche documentaire de haut niveau.\n"
-            "Ta mission : chercher, recouper les sources fiables, extraire les faits essentiels "
-            "et fournir une synthèse claire, dense et vérifiée à l'orchestrateur.\n"
-            "Ne divague pas, concentre-toi exclusivement sur la mission transmise."
+            "You are an elite research and documentation subagent.\n"
+            "Mission: Search reliable sources, extract essential facts, cross-verify data, "
+            "and provide a concise, high-density synthesis to the coordinator.\n"
+            "Adapt output language dynamically to match the user's inquiry."
         ),
     },
     {
         "name": "code",
-        "display_name": "💻 Code & Architecture",
-        "description": "Expert en développement logiciel (Python, JS, Bash, C/C++), refactoring, débogage et tests unitaires.",
-        "model": "gemini-4-argon-medium",
+        "display_name": "💻 Code & Execution",
+        "description": "Specialist in software engineering, rapid implementation, refactoring, and automated testing.",
+        "model": "gemini-4-hydrogen",
         "tools": [
             "run_command",
             "view_file",
@@ -81,17 +81,17 @@ DEFAULT_SEED_AGENTS: List[Dict[str, Any]] = [
         ],
         "enabled": True,
         "instructions": (
-            "Tu es un ingénieur logiciel et architecte expert.\n"
-            "Ta mission : concevoir, écrire du code propre, modulaire et robuste, corriger les bugs, "
-            "et exécuter les tests pour valider le bon fonctionnement avant de rendre ton rapport.\n"
-            "Sois concis, précis et concentre-toi sur la solution technique optimale."
+            "You are an expert software engineer powered by Gemini 4 Hydrogen.\n"
+            "Mission: Design clean, modular code, implement robust solutions, run unit tests, "
+            "and fix issues rapidly before returning reports to the coordinator.\n"
+            "Be precise, disciplined, and verify everything with tests."
         ),
     },
     {
         "name": "maker_3d",
-        "display_name": "📐 3D, Électronique & Maker",
-        "description": "Spécialiste en modélisation 3D (OpenSCAD, STL), projets makers, Arduino, Raspberry Pi et ESP32.",
-        "model": "gemini-3.8-flash-medium",
+        "display_name": "📐 3D, Electronics & Maker",
+        "description": "Specialist in 3D modeling (OpenSCAD, STL), Arduino, ESP32, and maker prototyping.",
+        "model": "gemini-3.8-flash",
         "tools": [
             "run_command",
             "view_file",
@@ -101,9 +101,9 @@ DEFAULT_SEED_AGENTS: List[Dict[str, Any]] = [
         ],
         "enabled": True,
         "instructions": (
-            "Tu es un expert en modélisation 3D, impression 3D et électronique embarquée (ESP32, Arduino, Raspberry Pi).\n"
-            "Ta mission : concevoir des pièces en OpenSCAD, calculer les cotes et tolérances avec exactitude, "
-            "et définir les schémas de câblage et scripts nécessaires pour fabriquer des prototypes fonctionnels."
+            "You are an expert in 3D modeling, additive manufacturing, and embedded electronics (ESP32, Arduino, Raspberry Pi).\n"
+            "Mission: Design parametric 3D parts in OpenSCAD, calculate tolerances accurately, "
+            "and produce functional wiring schemas and firmware scripts."
         ),
     },
 ]
@@ -305,17 +305,17 @@ class AgentRegistry:
         """
         Generate the concise dynamic subagent team prompt injected into the orchestrator.
         Enforces:
-        - Delegation with reformulated clear missions.
+        - Delegation with reformulated clear missions in English.
         - Direct response for simple conversational messages.
-        - Gathering outputs and composing the final response.
+        - Gathering outputs and composing the final response in user's language.
         """
         agents = self.list_agents(include_disabled=False)
         if not agents:
             return ""
 
         lines = [
-            "[ÉQUIPE DE SOUS-AGENTS SPÉCIALISÉS (ORCHESTRATION)]",
-            "Tu es l'ORCHESTRATEUR principal. Tu as sous tes ordres une équipe de sous-agents spécialisés :",
+            "[SPECIALIZED SUBAGENT TEAM & ORCHESTRATION]",
+            "You are the master COORDINATOR and ORCHESTRATOR. You have access to a specialized team of autonomous subagents:",
         ]
 
         for ag in agents:
@@ -323,19 +323,21 @@ class AgentRegistry:
             dname = ag.get("display_name", name)
             desc = ag.get("description", "")
             model = ag.get("model", "auto")
-            tools = ", ".join(ag.get("tools", [])) or "aucun outil spécifique"
-            lines.append(f"• `{name}` ({dname}) : {desc} [Modèle: {model} | Outils: {tools}]")
+            tools = ", ".join(ag.get("tools", [])) or "none specified"
+            lines.append(f"• `{name}` ({dname}): {desc} [Model: {model} | Tools: {tools}]")
 
         lines.extend([
             "",
-            "RÈGLES D'ORCHESTRATION STRICTES :",
-            "1. RÉPONSE DIRECTE : Pour les questions simples, salutations ou demandes ne nécessitant pas d'expertise poussée,",
-            "   réponds DIRECTEMENT sans invoquer de sous-agent ni utiliser d'outil superflu (gain de vitesse maximal).",
-            "2. DÉLÉGATION STRUCTURÉE : Pour les tâches complexes, de recherche, de code ou multi-étapes :",
-            "   - Reformule une MISSION CLAIRE et DÉTAILLÉE pour le sous-agent adéquat via `invoke_subagent` ou `define_subagent`.",
-            "   - Enchaîne les sous-agents si besoin (ex: Recherche d'abord, puis Code ou Modélisation 3D).",
-            "3. SYNTHÈSE FINALE : Ne laisse jamais un sous-agent s'adresser directement à l'utilisateur.",
-            "   Tu dois TOUJOURS recueillir leurs résultats, les vérifier, et rédiger TOI-MÊME la réponse finale élégante et complète.",
+            "STRICT ORCHESTRATION & SWARM RULES:",
+            "1. DIRECT RESPONSE: For straightforward conversational questions, greetings, or quick queries,",
+            "   reply DIRECTLY without spawning subagents to minimize latency and conserve tokens.",
+            "2. STRUCTURED DELEGATION & SWARM: For complex multi-step missions, deep research, or coding:",
+            "   - Reformulate a CLEAR, ACTIONABLE BRIEF for the target subagent (`invoke_subagent` or `swarm`).",
+            "   - When using Swarm, assign dedicated workers with isolated workspaces (`workspace: 'share'` or `'branch'`).",
+            "   - Chain subagents sequentially or parallelize when independent.",
+            "3. FINAL UNIFIED SYNTHESIS: Subagents must never deliver raw fragmented outputs to the user.",
+            "   You must ALWAYS collect, review, and synthesize their results into a cohesive final reply.",
+            "4. DYNAMIC LANGUAGE: Regardless of internal English instructions, ALWAYS reply to the user in their spoken language (e.g. French).",
         ])
 
         return "\n".join(lines)

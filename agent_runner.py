@@ -38,37 +38,52 @@ from i18n import t
 
 logger = logging.getLogger("agent_runner")
 
+def to_base_model_id(model_id: str) -> str:
+    """Normalize any full model ID (with effort suffix) to its clean base model ID."""
+    m = (model_id or "").strip()
+    if m in ("auto", "gemini-pro-orchestrator-g1-pro"):
+        return m
+    for suffix in ("-xhigh", "-high", "-medium", "-low", "-max"):
+        if m.endswith(suffix):
+            return m[:-len(suffix)]
+    return m
+
+
 DEFAULT_MODELS_LIST: List[Tuple[str, str]] = [
     ("auto", "🤖 Auto (Smart Task & Quota Routing)"),
-    ("gemini-3.8-flash-medium", "Gemini 3.8 Flash (Medium)"),
-    ("gemini-3.8-flash-high", "Gemini 3.8 Flash (High)"),
-    ("gemini-3.8-flash-low", "Gemini 3.8 Flash (Low)"),
-    ("gemini-4-argon-medium", "Gemini 4 Argon (Medium) [Pro]"),
-    ("gemini-4-argon-high", "Gemini 4 Argon (High) [Pro]"),
-    ("gemini-4-argon-low", "Gemini 4 Argon (Low) [Pro]"),
-    ("claude-sonnet-5-5-medium", "Claude Sonnet 5.5 (Medium) [Pro]"),
-    ("claude-sonnet-5-5-high", "Claude Sonnet 5.5 (High) [Pro]"),
-    ("claude-sonnet-5-5-low", "Claude Sonnet 5.5 (Low) [Pro]"),
-    ("claude-opus-5-5-medium", "Claude Opus 5.5 (Medium) [Pro]"),
-    ("claude-opus-5-5-high", "Claude Opus 5.5 (High) [Pro]"),
-    ("claude-opus-5-5-low", "Claude Opus 5.5 (Low) [Pro]"),
-    ("gpt-oss-120b-medium", "GPT-OSS 120B (Medium)"),
+    ("gemini-pro-orchestrator-g1-pro", "🎛️ Gemini Pro Orchestrator (Argon) [Pro/Ultra]"),
+    ("gemini-4-hydrogen", "🚀 Gemini 4 Hydrogen [Pro/Ultra]"),
+    ("gemini-4-carbon", "💎 Gemini 4 Carbon [Ultra]"),
+    ("gemini-4-argon", "🧠 Gemini 4 Argon [Pro/Ultra]"),
+    ("gemini-3.8-flash", "⚡ Gemini 3.8 Flash"),
+    ("claude-sonnet-5-5", "📜 Claude Sonnet 5.5 [Pro/Ultra]"),
+    ("claude-opus-5-5", "👑 Claude Opus 5.5 [Pro/Ultra]"),
+    ("gpt-oss-120b", "🌐 GPT-OSS 120B (Medium)"),
 ]
 
 _cached_models: List[Tuple[str, str]] = list(DEFAULT_MODELS_LIST)
-_models_fetched_once: bool = True
+_models_fetched_once: bool = False
 
 VALID_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 
 
 def resolve_effort_flag(model_name: str, requested_effort: str) -> Optional[str]:
-    """Determine whether to pass --effort to `agy`."""
+    """Determine whether to pass --effort to `agy` based on model capabilities."""
     if not requested_effort or requested_effort == "auto":
         return None
     eff = requested_effort.lower().strip()
-    if eff in VALID_EFFORT_LEVELS:
+    if eff not in VALID_EFFORT_LEVELS:
+        return None
+    m = (model_name or "").lower()
+    if "carbon" in m:
         return eff
-    return None
+    elif "hydrogen" in m:
+        return eff if eff in ("low", "medium", "high", "xhigh") else "high"
+    elif "argon" in m or "flash" in m or "claude" in m:
+        return eff if eff in ("low", "medium", "high") else "high"
+    elif "gpt-oss" in m:
+        return None
+    return eff
 
 
 def get_active_mcp_servers_prompt() -> str:
@@ -129,16 +144,37 @@ def build_system_prompt(settings: dict) -> str:
     browser_script = str(BASE_DIR / "browser_tool.py")
     cmd_script = str(BASE_DIR / "command_manager.py")
 
+    tier_lower = (account_tier or "auto").lower()
+    if tier_lower == ACCOUNT_TIER_FREE:
+        tier_section = """[GOOGLE SUBSCRIPTION CONSTRAINTS - FREE TIER]
+- Current Google Plan: FREE.
+- Available Models: Gemini Flash (`gemini-3.8-flash`).
+- Strict Restrictions: Multi-agent swarms, parallel subagent spawning, and heavy frontier models (Gemini 4 Carbon, Argon, Hydrogen, Orchestrator, Claude) are NOT available on Free Tier.
+- Mode: Single-agent execution only. Keep reasoning direct, responsive, and quota-efficient."""
+    elif tier_lower == ACCOUNT_TIER_PRO:
+        tier_section = """[GOOGLE SUBSCRIPTION CONSTRAINTS - PRO TIER]
+- Current Google Plan: PRO.
+- Available Models: Gemini Pro Orchestrator, Gemini 4 Hydrogen (fast execution), Gemini 4 Argon (deep reasoning), Claude Sonnet/Opus, Gemini 3.8 Flash.
+- Swarm & Teamwork: Fully enabled! You can coordinate multi-agent teams using Hydrogen for coding/execution, Argon for verification, and Flash for documentation.
+- Strict Restriction: Gemini 4 Carbon (1M input / 1M continuation output tokens) is strictly reserved for Ultra accounts."""
+    else:
+        tier_section = """[GOOGLE SUBSCRIPTION CONSTRAINTS - ULTRA / ENTERPRISE TIER]
+- Current Google Plan: ULTRA / ENTERPRISE.
+- Available Models: Full access to Gemini 4 Carbon (1M tokens context & output), Gemini Pro Orchestrator, Gemini 4 Hydrogen, Gemini 4 Argon, Claude Opus/Sonnet, and all models.
+- Swarm & Teamwork: Unlimited frontier multi-agent collaboration with all models and reasoning effort up to `max`."""
+
     prompt = f"""[AGENT ROLE & IDENTITY]
 You are {agent_name}, an autonomous personal AI assistant powered by Google Antigravity CLI and connected in real time to Telegram.
 Host System: {'Windows' if IS_WINDOWS else 'Linux/Unix'} | Bot Directory: `{BASE_DIR}` | Google Plan: `{account_tier.upper()}`
 Built-in mastery skill: `telegram-bot-mastery` (`.agents/skills/telegram-bot-mastery/SKILL.md`).
 
+{tier_section}
+
 COMMUNICATION & EXECUTION RULES:
 1. 🌐 LANGUAGE & ADAPTATION:
-   - Your primary operational and default language is English (en). Internal reasoning and general output must be in English by default.
+   - Your primary operational, internal reasoning, and default language is strictly English (en).
    - You MUST adapt dynamically to the language the user speaks to you in (e.g. if the user speaks French, reply in fluent French; if English, reply in English).
-   - If the user specifies a language preference, strictly adhere to it.
+   - Keep tool commands and internal logs in English.
 2. ⚡ INTEGRATED LIVE STREAMING: Telegram automatically streams your thinking, tools, subagents, and progress in real time inside an animated message bubble. DO NOT run `tg_send` to send status text updates like "Analyzing..." or "I will do...".
 3. 📤 DIRECT MULTIMEDIA DISPATCH (IMAGES, VIDEOS, AUDIO, DOCUMENTS):
    Whenever you generate, download, or prepare a file for the user (image, chart, PDF, video, audio, archive, code file), send it directly to Telegram with:
@@ -159,9 +195,6 @@ COMMUNICATION & EXECUTION RULES:
        `"{py_exe}" "{mem_script}" add "<precise fact>" --category <infra|projet|rules|system> --shared --key "<unique_key>" --importance 5`
        `"{py_exe}" "{mem_script}" person add "<Name>" --role "<role>" --shared`
        `"{py_exe}" "{mem_script}" relate "<PersonA>" "<relation>" "<PersonB>" --shared`
-   • AUTONOMOUS RULE:
-     - If the user talks about *themselves*, their background, private projects, or habits -> Store in PERSONAL MEMORY.
-     - If the task is about *configuring the server, installing packages/Docker, maintaining shared projects, or setting global rules* -> Store in SHARED MEMORY with `--shared`.
    • Commands:
      - Search memory: `"{py_exe}" "{mem_script}" search "<query>"`
      - List memories: `"{py_exe}" "{mem_script}" list`
@@ -170,13 +203,18 @@ COMMUNICATION & EXECUTION RULES:
      `"{py_exe}" "{browser_script}" search "<query>"`
      `"{py_exe}" "{browser_script}" fetch "<url>"`
      `"{py_exe}" "{browser_script}" screenshot "<url>" --send-tg --caption "Screenshot"`
-6. 🕹️ DYNAMIC TELEGRAM COMMANDS:
-   - You can create or remove dynamic Telegram commands (`/command`) on demand:
-     `"{py_exe}" "{cmd_script}" add <name> "<description>" "<template {{prompt}}>"`
+6. 🎛️ GEMINI PRO ORCHESTRATOR & SWARM COLLABORATION:
+   - When Multi-Agent / Swarm is active (Pro & Ultra plans):
+     * As Swarm Coordinator, do NOT perform heavy edits yourself inline.
+     * Name the swarm: `swarm(action="title", title="...")`.
+     * Spawn workers with specific roles and models: `swarm(action="add", name="coder", model="gemini-4-hydrogen", workspace="share", brief="...")`.
+     * Use `gemini-4-hydrogen` for rapid code generation & test runs, `gemini-3.8-flash` for fast research, and `gemini-4-argon` (or `gemini-4-carbon` on Ultra) for deep verification.
+     * Coordinate on the shared board via `post_message` and `read_board`.
+     * You can also use `run_workflow` to fan out automated Python workflow scripts across parallel subagents.
 7. ⚡ EMBEDDED ARM HARDWARE PERFORMANCE (Armbian / TV-Box):
-   - NEVER run blind recursive search (`grep -rn`, `find /`) on directories containing `node_modules`, `.venv`, `.git`, or root `/`. It will freeze the hardware!
-   - ALWAYS exclude heavy dependency trees: `grep -rn --exclude-dir={{node_modules,.venv,.git,workspaces}} ...` or read target files directly.
-   - For commands producing large output, pipe to `head -n 50` to conserve memory and avoid I/O bottlenecks.
+   - NEVER run blind recursive search (`grep -rn`, `find /`) on directories containing `node_modules`, `.venv`, `.git`, or root `/`.
+   - ALWAYS exclude heavy dependency trees: `grep -rn --exclude-dir={{node_modules,.venv,.git,workspaces}} ...`.
+   - Pipe large command outputs to `head -n 50`.
 """
 
     # Inject MCP servers section so the model always knows what MCP tools exist
@@ -249,30 +287,49 @@ async def run_agy_subcommand(sub_args: List[str], timeout: float = 15.0) -> Tupl
 
 
 async def fetch_available_models(force_refresh: bool = False) -> List[Tuple[str, str]]:
-    """Query `agy models` to get the live list of supported models."""
+    """Query `agy models` to get the live list of supported models (deduplicated by base model)."""
     global _cached_models, _models_fetched_once
     if _models_fetched_once and not force_refresh and _cached_models:
         return _cached_models
 
     rc, out, _ = await run_agy_subcommand(["models"], timeout=15.0)
     if rc == 0 and out:
-        parsed: List[Tuple[str, str]] = []
+        parsed: List[Tuple[str, str]] = [("auto", "🤖 Auto (Smart Task & Quota Routing)")]
+        seen_bases = {"auto"}
         for line in out.splitlines():
             line = line.strip()
             if not line or line.lower().startswith("fetching"):
                 continue
+            mod_id = ""
+            mod_label = ""
             if "\t" in line:
                 parts = line.split("\t", 1)
                 mod_id, mod_label = parts[0].strip(), parts[1].strip()
-                if mod_id:
-                    parsed.append((mod_id, mod_label or mod_id))
             else:
                 tokens = line.split(maxsplit=1)
                 if len(tokens) == 2 and "-" in tokens[0]:
-                    parsed.append((tokens[0].strip(), tokens[1].strip()))
+                    mod_id, mod_label = tokens[0].strip(), tokens[1].strip()
                 elif len(tokens) == 1 and "-" in tokens[0]:
-                    parsed.append((tokens[0].strip(), tokens[0].strip()))
-        if parsed:
+                    mod_id, mod_label = tokens[0].strip(), tokens[0].strip()
+
+            base_id = to_base_model_id(mod_id)
+            if base_id and base_id not in seen_bases:
+                seen_bases.add(base_id)
+                clean_lbl = mod_label or base_id
+                for sfx in ("(High)", "(Medium)", "(Low)", "(XHigh)", "(Max)"):
+                    clean_lbl = clean_lbl.replace(sfx, "").strip()
+                if "carbon" in base_id and "[Ultra]" not in clean_lbl:
+                    clean_lbl += " [Ultra]"
+                elif ("argon" in base_id or "hydrogen" in base_id or "orchestrator" in base_id or "claude" in base_id) and "[Pro" not in clean_lbl:
+                    clean_lbl += " [Pro/Ultra]"
+                parsed.append((base_id, clean_lbl))
+
+        # Include Ultra models like Carbon if not already present in agy models output
+        if "gemini-4-carbon" not in seen_bases:
+            parsed.append(("gemini-4-carbon", "Gemini 4 Carbon [Ultra]"))
+            seen_bases.add("gemini-4-carbon")
+
+        if len(parsed) > 1:
             _cached_models = parsed
             _models_fetched_once = True
             return _cached_models
@@ -570,20 +627,29 @@ class AgentRunner:
         else:
             candidate_models = [preferred_model] + [m for m in model_ids if m != preferred_model]
 
-        # Tier Adaptation: On Free Tier, filter out Argon and Claude models to avoid instant failure
+        # Tier Adaptation:
         if account_tier == ACCOUNT_TIER_FREE:
+            # Free Tier: filter out premium and specialized models to avoid instant quota/access failures
             candidate_models = [
                 m for m in candidate_models
-                if "argon" not in m and "claude" not in m
+                if not any(k in m for k in ("carbon", "argon", "hydrogen", "orchestrator", "claude"))
             ]
             if not candidate_models:
-                candidate_models = ["gemini-3.8-flash-medium", "gemini-3.8-flash-low", "gemini-3.8-flash-high"]
+                candidate_models = ["gemini-3.8-flash"]
+        elif account_tier == ACCOUNT_TIER_PRO:
+            # Pro Tier: Carbon is reserved for Ultra accounts
+            candidate_models = [
+                m for m in candidate_models
+                if "carbon" not in m
+            ]
 
-        # GUARANTEE RESILIENCE: Ensure a Flash model is ALWAYS present in the candidate chain
-        flash_fallbacks = ["gemini-3.8-flash-medium", "gemini-3.8-flash-low", "gemini-3.8-flash-high"]
+        # GUARANTEE RESILIENCE: Ensure Flash is ALWAYS present in the candidate chain
+        flash_fallbacks = ["gemini-3.8-flash", "gemini-3.8-flash-medium", "gemini-3.8-flash-low"]
         for ff in flash_fallbacks:
             if ff in model_ids and ff not in candidate_models:
                 candidate_models.append(ff)
+        if not any("flash" in m for m in candidate_models):
+            candidate_models.append("gemini-3.8-flash")
 
         governor.start_turn()
         self._is_running_prompt = True

@@ -1,7 +1,7 @@
 {
-  "bot_version": "5.1.0",
-  "min_agy_version": "1.4.12",
+  "bot_version": "5.2.0",
+  "min_agy_version": "1.5.9",
   "repository": "https://github.com/Vagabond404/antigravity-telegram-bot.git",
   "branch": "main",
-  "changelog": "Antigravity Telegram Agent v5.1.0: Native scheduled tasks and automations engine (tasks.py / /tasks / /schedule), 100% real-time official Google Antigravity quotas (/usage) synced from CLI, hardened multi-layer message delivery with automatic RetryAfter & network backoff, deep person profile system with speech tone rules (tutoiement/vouvoiement), and social graph connection tracking (mem.py person / relate)."
+  "changelog": "Antigravity Telegram Agent v5.2.0: Clean unified /model menu without effort duplicates (base models only), model-tailored /effort selector dynamically displaying supported thinking depths (e.g. xhigh for Hydrogen, max for Carbon), full support for Gemini 4 Hydrogen, Carbon & Orchestrator, upgraded to Antigravity CLI v1.5.9 with native run_workflow tool and smart quota telemetry."
 }

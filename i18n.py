@@ -88,11 +88,11 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
     },
     "welcome_admin": {
         "en": (
-            "👋 <b>Welcome to {agent_name} (Antigravity CLI v4.2)!</b>\n\n"
+            "👋 <b>Welcome to {agent_name} (Antigravity CLI v5.2)!</b>\n\n"
             "Your universal, autonomous AI gateway powered by the latest <b>Google Antigravity CLI</b>.\n\n"
             "⚡ <b>Core Capabilities:</b>\n"
-            "• 🧠 <b>Dynamic Models & Effort:</b> Real-time CLI models & deep thinking (<code>/settings</code>, <code>/models</code>, <code>/effort</code>)\n"
-            "• 📊 <b>Quota Gauges:</b> Real-time token usage breakdown for Gemini, Argon & Claude (<code>/usage</code>)\n"
+            "• 🧠 <b>Dynamic Models & Effort:</b> Real-time CLI models (Gemini Flash, Hydrogen, Carbon, Argon, Orchestrator & Claude) & deep thinking (<code>/settings</code>, <code>/models</code>, <code>/effort</code>)\n"
+            "• 📊 <b>Quota Gauges:</b> Real-time token usage breakdown for Flash, Hydrogen, Carbon, Argon & Claude (<code>/usage</code>)\n"
             "• 🤝 <b>Multi-Agent Swarm:</b> Coordinated parallel subagents (<code>/agents</code>, <code>/teamwork</code>)\n"
             "• 📤 <b>Full Multimedia:</b> Send & receive photos, videos, audio, voice notes, PDFs & archives\n"
             "• 🔌 <b>CLI Ecosystem:</b> 1-click management of <code>/mcp</code> servers, <code>/plugins</code>, <code>/remote</code>, and <code>/sessions</code>\n"
@@ -101,11 +101,11 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
             "💡 <i>Send a message, a photo, a document or type <code>/settings</code> to customize everything!</i>"
         ),
         "fr": (
-            "👋 <b>Bienvenue sur {agent_name} (Antigravity CLI v4.2) !</b>\n\n"
+            "👋 <b>Bienvenue sur {agent_name} (Antigravity CLI v5.2) !</b>\n\n"
             "Votre passerelle IA autonome universelle propulsée par la dernière version de <b>Google Antigravity CLI</b>.\n\n"
             "⚡ <b>Capacités Intégrées :</b>\n"
-            "• 🧠 <b>Modèles & Effort Dynamiques :</b> Sélection en direct depuis <code>agy models</code> et effort jusqu'à <code>xhigh</code>/<code>max</code> (<code>/settings</code>, <code>/models</code>, <code>/effort</code>)\n"
-            "• 📊 <b>Jauges de Quotas :</b> Consommation en direct des tokens Gemini, Argon & Claude (<code>/usage</code>)\n"
+            "• 🧠 <b>Modèles & Effort Dynamiques :</b> Sélection en direct depuis <code>agy models</code> (Gemini Flash, Hydrogen, Carbon, Argon, Orchestrator & Claude) et effort jusqu'à <code>xhigh</code>/<code>max</code> (<code>/settings</code>, <code>/models</code>, <code>/effort</code>)\n"
+            "• 📊 <b>Jauges de Quotas :</b> Consommation en direct des tokens Flash, Hydrogen, Carbon, Argon & Claude (<code>/usage</code>)\n"
             "• 🤝 <b>Essaim Multi-Agents :</b> Orchestration parallèle de sous-agents autonomes (<code>/agents</code>, <code>/teamwork</code>)\n"
             "• 📤 <b>Multimédia Complet :</b> Envoyez et recevez images, vidéos, audios, vocaux, PDF et archives\n"
             "• 🔌 <b>Écosystème CLI :</b> Gestion en 1 clic des serveurs <code>/mcp</code>, <code>/plugins</code>, <code>/remote</code> et <code>/sessions</code>\n"

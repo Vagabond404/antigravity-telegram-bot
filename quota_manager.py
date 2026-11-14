@@ -32,9 +32,14 @@ QUOTA_FILE = BASE_DIR / "model_quotas.json"
 
 # Models considered "premium" with scarce quotas to be preserved
 PREMIUM_MODELS = [
+    "gemini-4-carbon-high",
+    "gemini-4-carbon-xhigh",
+    "gemini-4-carbon-medium",
+    "gemini-4-carbon-low",
     "gemini-4-argon-medium",
     "gemini-4-argon-high",
     "gemini-4-argon-low",
+    "gemini-pro-orchestrator-g1-pro",
     "claude-sonnet-5-5-medium",
     "claude-sonnet-5-5-high",
     "claude-sonnet-5-5-low",
@@ -43,8 +48,12 @@ PREMIUM_MODELS = [
     "claude-opus-5-5-low",
 ]
 
-# Fast lightweight models with generous or high-throughput limits
+# Fast execution & lightweight models with generous throughput limits
 FAST_MODELS = [
+    "gemini-4-hydrogen-medium",
+    "gemini-4-hydrogen-high",
+    "gemini-4-hydrogen-low",
+    "gemini-4-hydrogen-xhigh",
     "gemini-3.8-flash-medium",
     "gemini-3.8-flash-high",
     "gemini-3.8-flash-low",
@@ -67,20 +76,29 @@ ROLLING_CYCLE_SECONDS = 5 * 3600
 TIER_FAMILY_BUDGETS = {
     ACCOUNT_TIER_FREE: {
         "gemini": 1_000_000,
+        "hydrogen": 0,        # Hydrogen requires Pro or Ultra tier
+        "carbon": 0,          # Carbon requires Ultra tier
         "argon": 0,           # Argon is not supported on standard Free tier
+        "orchestrator": 0,
         "claude": 0,          # Claude is not supported or trial-only on Free tier
         "other": 500_000,
     },
     ACCOUNT_TIER_PRO: {
         "gemini": 3_000_000,
+        "hydrogen": 3_000_000, # Dedicated fast execution model for Pro
+        "carbon": 0,          # Carbon is Ultra only
         "argon": 400_000,
+        "orchestrator": 400_000,
         "claude": 250_000,
         "other": 1_000_000,
     },
     ACCOUNT_TIER_ULTRA: {
         "gemini": 10_000_000,
-        "argon": 1_500_000,
-        "claude": 1_000_000,
+        "hydrogen": 10_000_000,
+        "carbon": 2_000_000,  # Ultra frontier reasoning model
+        "argon": 2_000_000,
+        "orchestrator": 2_000_000,
+        "claude": 1_500_000,
         "other": 5_000_000,
     },
 }
@@ -460,46 +478,85 @@ class QuotaManager:
 
         # Tier Resolution: If Free tier is explicitly configured or detected
         is_free_tier = (account_tier == ACCOUNT_TIER_FREE)
+        is_ultra = (account_tier == ACCOUNT_TIER_ULTRA)
+
+        # Helper to find any candidate in available_model_ids (supports both base and suffixed IDs)
+        def find_match(prefixes: List[str]) -> Optional[str]:
+            for p in prefixes:
+                if p in available_model_ids:
+                    return p
+                for a in available_model_ids:
+                    if a == p or a.startswith(p + "-"):
+                        return a
+            return None
 
         # 1. Free Tier: Route exclusively to Gemini Flash models
         if is_free_tier:
-            for candidate in FAST_MODELS:
-                if candidate in available_model_ids:
-                    limited, _ = self.is_rate_limited(candidate)
-                    if not limited:
-                        return candidate, f"Free Plan ➔ {candidate} (Flash Generous Quota)"
+            cand = find_match(["gemini-3.8-flash", "gemini-3.8-flash-medium", "gemini-3.8-flash-low"])
+            if cand:
+                limited, _ = self.is_rate_limited(cand)
+                if not limited:
+                    return cand, f"Free Plan ➔ {cand} (Flash Generous Quota)"
             # Fallback to any non-limited model
             for m in available_model_ids:
-                if "argon" not in m and "claude" not in m:
+                if not any(k in m for k in ("carbon", "argon", "hydrogen", "orchestrator", "claude")):
                     return m, f"Free Plan ➔ {m}"
 
-        # 2. Pro / Ultra Plan - Complex Task: Assign Argon or Claude
+        # 2. Pro / Ultra Plan - Complex Task: Assign Carbon (Ultra), Argon, Orchestrator or Claude
         if is_complex:
-            # First try Argon (Top Google reasoning)
-            for candidate in ["gemini-4-argon-medium", "gemini-4-argon-high", "gemini-4-argon-low"]:
-                if candidate in available_model_ids:
-                    limited, _ = self.is_rate_limited(candidate)
+            # Ultra Tier: First try Carbon (Google DeepMind frontier reasoning)
+            if is_ultra:
+                cand = find_match(["gemini-4-carbon", "gemini-4-carbon-high", "gemini-4-carbon-medium"])
+                if cand:
+                    limited, _ = self.is_rate_limited(cand)
                     if not limited:
-                        return candidate, f"Complex Task ➔ {candidate} (Deep Reasoning)"
+                        return cand, f"Ultra Frontier Reasoning ➔ {cand} (Gemini Carbon)"
+
+            # Next try Argon (Top Google reasoning)
+            cand = find_match(["gemini-4-argon", "gemini-4-argon-medium", "gemini-4-argon-high"])
+            if cand:
+                limited, _ = self.is_rate_limited(cand)
+                if not limited:
+                    return cand, f"Complex Task ➔ {cand} (Deep Reasoning)"
+
+            # Try Multi-Model Orchestrator
+            if "gemini-pro-orchestrator-g1-pro" in available_model_ids:
+                limited, _ = self.is_rate_limited("gemini-pro-orchestrator-g1-pro")
+                if not limited:
+                    return "gemini-pro-orchestrator-g1-pro", "Complex Orchestration ➔ Orchestrator"
 
             # Next try Claude (Code & synthesis specialist)
-            for candidate in ["claude-sonnet-5-5-medium", "claude-sonnet-5-5-high", "claude-sonnet-5-5-low"]:
-                if candidate in available_model_ids:
-                    limited, _ = self.is_rate_limited(candidate)
-                    if not limited:
-                        return candidate, f"Technical Task ➔ {candidate} (Claude Synthesis)"
+            cand = find_match(["claude-sonnet-5-5", "claude-sonnet-5-5-medium", "claude-sonnet-5-5-high"])
+            if cand:
+                limited, _ = self.is_rate_limited(cand)
+                if not limited:
+                    return cand, f"Technical Task ➔ {cand} (Claude Synthesis)"
+
+            # High-speed Hydrogen fallback for complex execution
+            cand = find_match(["gemini-4-hydrogen", "gemini-4-hydrogen-high", "gemini-4-hydrogen-medium"])
+            if cand:
+                limited, _ = self.is_rate_limited(cand)
+                if not limited:
+                    return cand, f"Fast Execution Fallback ➔ {cand} (Gemini Hydrogen)"
 
             # If premium models in cooldown, fall back cleanly to Flash
-            for candidate in FAST_MODELS:
-                if candidate in available_model_ids:
-                    return candidate, f"Heavy Models on Cooldown ➔ {candidate} (Resilient Fallback)"
+            cand = find_match(["gemini-3.8-flash", "gemini-3.8-flash-medium", "gemini-3.8-flash-low"])
+            if cand:
+                return cand, f"Heavy Models on Cooldown ➔ {cand} (Resilient Fallback)"
 
-        # 3. Standard / Everyday Query: Always use Flash to preserve Argon & Claude quotas!
-        for candidate in ["gemini-3.8-flash-medium", "gemini-3.8-flash-high", "gemini-3.8-flash-low"]:
-            if candidate in available_model_ids:
-                limited, _ = self.is_rate_limited(candidate)
+        # 3. Standard / Everyday Query: Use Hydrogen (if Pro/Ultra) or Flash to preserve reasoning quotas!
+        if not is_free_tier:
+            cand = find_match(["gemini-4-hydrogen", "gemini-4-hydrogen-medium", "gemini-4-hydrogen-high"])
+            if cand:
+                limited, _ = self.is_rate_limited(cand)
                 if not limited:
-                    return candidate, f"Standard Query ➔ {candidate} (Fast & Quota Preserved)"
+                    return cand, f"High-Speed Execution ➔ {cand} (Gemini Hydrogen)"
+
+        cand = find_match(["gemini-3.8-flash", "gemini-3.8-flash-medium", "gemini-3.8-flash-high"])
+        if cand:
+            limited, _ = self.is_rate_limited(cand)
+            if not limited:
+                return cand, f"Standard Query ➔ {cand} (Fast & Quota Preserved)"
 
         # 4. Default fallback: Pick any model that is NOT rate-limited
         for m in available_model_ids:
@@ -557,8 +614,10 @@ class QuotaManager:
         if live_groups:
             group_icons = {
                 "gemini models": "⚡",
-                "claude and gpt models": "📜",
+                "gemini 4 hydrogen": "🚀",
+                "gemini 4 carbon": "💎",
                 "gemini 4 argon": "🧠",
+                "claude and gpt models": "📜",
             }
             for grp in live_groups:
                 g_name = grp.get("name", "Bucket")
@@ -600,6 +659,8 @@ class QuotaManager:
             # Fallback to local quota calculation if CLI is offline
             family_configs = [
                 ("gemini", "⚡ Gemini (Flash)", "gemini-3.8-flash-medium"),
+                ("hydrogen", "🚀 Hydrogen (Gemini 4 Hydrogen)", "gemini-4-hydrogen-medium"),
+                ("carbon", "💎 Carbon (Gemini 4 Carbon)", "gemini-4-carbon-medium"),
                 ("argon", "🧠 Argon (Gemini 4 Argon)", "gemini-4-argon-medium"),
                 ("claude", "📜 Claude (Sonnet / Opus)", "claude-sonnet-5-5-medium"),
             ]

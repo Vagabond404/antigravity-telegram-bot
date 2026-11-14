@@ -169,17 +169,32 @@ ACCOUNT_TIER_PRO = "pro"
 ACCOUNT_TIER_ULTRA = "ultra"
 VALID_ACCOUNT_TIERS = [ACCOUNT_TIER_AUTO, ACCOUNT_TIER_FREE, ACCOUNT_TIER_PRO, ACCOUNT_TIER_ULTRA]
 
-# Antigravity AI Model Families (3 distinct quota categories)
+# Antigravity AI Model Families (distinct quota categories)
 MODEL_FAMILIES: Dict[str, List[str]] = {
     "gemini": [
         "gemini-3.8-flash-low",
         "gemini-3.8-flash-medium",
         "gemini-3.8-flash-high",
     ],
+    "hydrogen": [
+        "gemini-4-hydrogen-low",
+        "gemini-4-hydrogen-medium",
+        "gemini-4-hydrogen-high",
+        "gemini-4-hydrogen-xhigh",
+    ],
+    "carbon": [
+        "gemini-4-carbon-low",
+        "gemini-4-carbon-medium",
+        "gemini-4-carbon-high",
+        "gemini-4-carbon-xhigh",
+    ],
     "argon": [
         "gemini-4-argon-low",
         "gemini-4-argon-medium",
         "gemini-4-argon-high",
+    ],
+    "orchestrator": [
+        "gemini-pro-orchestrator-g1-pro",
     ],
     "claude": [
         "claude-sonnet-5-5-low",
@@ -196,8 +211,14 @@ MODEL_FAMILIES: Dict[str, List[str]] = {
 
 
 def get_model_family(model_name: str) -> str:
-    """Return the Antigravity model family ('gemini', 'argon', 'claude', or 'other')."""
+    """Return the Antigravity model family ('gemini', 'hydrogen', 'carbon', 'argon', 'orchestrator', 'claude', or 'other')."""
     m = (model_name or "").lower()
+    if "hydrogen" in m:
+        return "hydrogen"
+    if "carbon" in m:
+        return "carbon"
+    if "orchestrator" in m:
+        return "orchestrator"
     if "argon" in m:
         return "argon"
     if "claude" in m:
